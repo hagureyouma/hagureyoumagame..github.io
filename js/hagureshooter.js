@@ -19,39 +19,39 @@
 'use strict';
 console.clear();
 
-const iconUrl = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css';
-// const fontUrl='https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c&display=swap';
-const fontUrl = 'https://fonts.googleapis.com/css2?family=Kaisei+Decol&display=swap';
-
+const FONT = {
+    DEFAULT: { NAME: 'Kaisei Decol', URL: 'https://fonts.googleapis.com/css2?family=Kaisei+Decol&display=swap', CUSTOM: false },
+    EMOJI: { NAME: 'FontAwesome', URL: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', CUSTOM: true }
+}
+Object.freeze(FONT);
 const TEXT_SIZE = {
     NORMAL: 20,
     MEDIUM: 30,
     BIG: 40,
 }
 Object.freeze(TEXT_SIZE);
-const COLOR = {
-    BLACK: '#000000',
-    WHITE: '#ffffff',
-    RED: '#ff0000',
-    ORANGE: '#ff8c00',
-    YELLOW: '#ffff00'
+const THEME = {
+    TEXT: '#ffffff',
+    HIGHLITE: 'yellow'
 }
-Object.freeze(COLOR);
+Object.freeze(THEME)
 const EMOJI = {
     GHOST: 'f6e2',
     CAT: 'f6be',
     CROW: 'f520',
     HOUSE: 'e00d',
-    TREE: 'f1bb'
+    TREE: 'f1bb',
+    DOVE: 'f4ba',
+    POO: 'f2fe'
 }
 Object.freeze(EMOJI);
 
-const LAYER_NAME = ['bg', 'main', 'effect', 'ui'];
+const LAYER_NAMES = ['bg', 'main', 'effect', 'ui'];
 
 let text = {
-    title: 'シューティングゲーム', title2: 'のようななにか', pressanykey: 'Xキーを押してね',
-    explanation1: '↑↓←→:選択、移動',
-    explanation2: 'Z:決定、攻撃　X:取消、中断',
+    title: 'シューティングゲーム', title2: 'のようなもの', pressanykey: 'Xキーを押してね',
+    explanation1: '操作方法：↑↓←→ 選択、移動',
+    explanation2: 'Z 決定、攻撃　X 取消、中断',
     start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
     pause: 'ポーズ', resume: 'ゲームを続ける', restart: '最初からやり直す', returntitle: 'タイトルに戻る',
     gameover: 'ゲームオーバー', continue: 'コンティニュー'
@@ -67,32 +67,16 @@ const BADDIE_FIRELATE = 1 / 0.5;
 
 class Game {
     constructor(width = 360, height = 480) {
-        document.body.style.backgroundColor = COLOR.BLACK;
+        document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
-        this.layer = new Layer();
-        this.layer.add(LAYER_NAME, 'aaa', 'bbb', LAYER_NAME);
-        this.layers = {};
-        const div = document.createElement('div');
-        div.style.position = 'relative';
-        div.style.display = 'block';
-        div.style.width = `${width}px`;
-        div.style.height = `${height}px`;
-        div.style.margin = '1rem auto';
-        document.body.insertAdjacentElement('beforebegin', div);
-        for (const layer of LAYER_NAME) {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            canvas.style.position = 'absolute';
-            div.appendChild(this.layers[layer] = canvas);
-        }
-        const bg = this.layers['bg'].getContext('2d');
-        bg.fillStyle = COLOR.BLACK;
-        bg.fillRect(0, 0, this.width, this.height);
-        this.blur = document.createElement('canvas');
-        this.blur.width = width;
-        this.blur.height = height;
-        this.isPauseBlur = false;
+        this.layer = new Layer(width, height);
+        this.layer.add(LAYER_NAMES);
+        const bg = this.layer.get('bg');
+        bg.isUpdate = false;
+        const bgctx = bg.canvas.getContext('2d');
+        bgctx.fillStyle = 'black';
+        bgctx.fillRect(0, 0, this.width, this.height);
+        this.layer.enableBlur('effect');
         this.root = new Mono(new State(), new Child());
         this.input = new Input();
         this.time;
@@ -116,22 +100,26 @@ class Game {
             })
             const fonts = [];
             for (const asset of this.asettsName) {
-                switch (true) {
-                    case Util.isImageFile(asset):
-                        await new Promise(resolve => {
-                            const img = new Image();
-                            img.src = asset;
-                            img.onload(resolve());
-                        });
-                        break;
-                    default:
-                        fonts.push(asset);
-                        break;
+                if (typeof asset === 'string') {
+                    switch (true) {
+                        case Util.isImageFile(asset):
+                            await new Promise(resolve => {
+                                const img = new Image();
+                                img.src = asset;
+                                img.onload(resolve());
+                            });
+                            break;
+                        default:
+                            break;
+                    }
+                } else {
+                    fonts.push(asset);
                 }
             }
             await new Promise(resolve => {
+                const customs = fonts.filter((f) => f.CUSTOM);
                 WebFont.load({
-                    google: { families: fonts }, custom: { families: ['FontAwesome'], urls: [iconUrl] }, active: resolve
+                    google: { families: fonts.filter((f) => !f.CUSTOM).map((f) => f.NAME) }, custom: { families: customs.map((f) => f.NAME), urls: customs.map((f) => f.URL) }, active: resolve
                 });
             });
             await pageLoadPromise.then(() => {
@@ -150,29 +138,15 @@ class Game {
         this.fpsBuffer.shift();
         this.input.update();
         this.root.baseUpdate();
-        const layers = Object.values(this.layers).slice(1);
-        for (const layer of layers) layer.getContext('2d').clearRect(0, 0, this.width, this.height);
-        const ctx = this.layers['effect'].getContext('2d');
-        //ctx.globalCompositeOperation = 'lighter';
-        ctx.drawImage(this.blur, 0, 0);
-        //ctx.globalCompositeOperation = 'source-over';
-        this.root.baseDraw(this.layers['main'].getContext('2d'));
-        if (!this.isPauseBlur) {
-            const blurCtx = this.blur.getContext('2d');
-            blurCtx.clearRect(0, 0, this.width, this.height);
-            blurCtx.globalAlpha = 0.6;
-            blurCtx.drawImage(this.layers['effect'], 0, 0);
-        }
+        this.layer.before();
+        this.root.baseDraw(this.layer.get('main').canvas.getContext('2d'));
+        this.layer.after();
         requestAnimationFrame(this.mainloop.bind(this));
     }
     pushScene = scene => this.root.child.add(scene);
     popScene = () => this.root.child.pop();
     setState = state => this.root.state.run(state);
     isOutOfRange = (rect) => !this.screenRect.isIntersect(rect);
-    clearBlur() {
-        const blurCtx = this.blur.getContext('2d');
-        blurCtx.clearRect(0, 0, this.width, this.height);
-    }
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)) };
 }
 class Layer {
@@ -180,7 +154,6 @@ class Layer {
         this.width = width;
         this.height = height;
         this.layers = new Map();
-        this.div;
         this.div = document.createElement('div');
         this.div.style.position = 'relative';
         this.div.style.display = 'block';
@@ -192,28 +165,36 @@ class Layer {
     before() {
         for (const layer of this.layers.values()) {
             if (!layer.isUpdate) continue;
-            layer.getContext('2d').clearRect(0, 0, this.width, this.height);
+            const ctx = layer.canvas.getContext('2d');
+            ctx.clearRect(0, 0, this.width, this.height);
             if (!layer.blur) continue;
-            layer.canvas.getContext('2d').drawImage(layer.blur, 0, 0);
+            ctx.drawImage(layer.blur, 0, 0);
         }
     }
     after() {
         for (const layer of this.layers.values()) {
             if (!layer.isUpdate) continue;
             if (!layer.blur || layer.isPauseBlur) continue;
-            const blur = layer.blur.getContext('2d');
-            blur.clearRect(0, 0, this.width, this.height);
-            blur.globalAlpha = 0.6;
-            blur.drawImage(layer.canvas, 0, 0);
+            const ctx = layer.blur.getContext('2d');
+            ctx.clearRect(0, 0, this.width, this.height);
+            ctx.globalAlpha = 0.6;
+            ctx.drawImage(layer.canvas, 0, 0);
         }
     }
-    add(name) {
-        const canvas = document.createElement('canvas');
-        canvas.width = this.width;
-        canvas.height = this.height;
-        canvas.style.position = 'absolute';
-        this.div.appendChild(canvas);
-        this.layers.set(name, { canvas: canvas, isUpdate: true, blur: undefined, isPauseBlur: false });
+    add(names) {
+        const create = (name) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = this.width;
+            canvas.height = this.height;
+            canvas.style.position = 'absolute';
+            this.div.appendChild(canvas);
+            this.layers.set(name, { canvas: canvas, isUpdate: true, blur: undefined, isPauseBlur: false });
+        }
+        if (Array.isArray(names)) {
+            for (const name of names) create(name);
+            return;
+        }
+        create(names);
     }
     get = (name) => this.layers.get(name);
     enableBlur(name) {
@@ -224,6 +205,9 @@ class Layer {
             blur.height = this.height;
             layer.blur = blur;
         };
+    }
+    clearBlur(name) {
+        this.layers.get(name).blur.getContext('2d').clearRect(0, 0, this.width, this.height);
     }
 }
 class Input {
@@ -488,7 +472,7 @@ class Child {
         for (const obj of this.objs) obj.baseUpdate();
     }
     draw(ctx) {
-        let currentCtx = this.drawlayer !== '' ? game.layers[this.drawlayer].getContext('2d') : ctx;
+        let currentCtx = this.drawlayer !== '' ? game.layer.get(this.drawlayer).canvas.getContext('2d') : ctx;
         for (const obj of this.objs) obj.baseDraw(currentCtx);
     }
     each(func) {
@@ -568,7 +552,7 @@ class Moji {
         this.text = '';
         this.weight = 'normal';
         this.size = TEXT_SIZE.NORMAL;
-        this.font = 'FontAwesome';
+        this.font = FONT.DEFAULT.NAME;
         this.baseLine = 'top';
         return [new Pos(), new Color(), this];
     }
@@ -579,7 +563,7 @@ class Moji {
         this.size = size;
         this.font = font;
         this.owner.color.value = color;
-        const ctx = game.layers['main'].getContext('2d');
+        const ctx = game.layer.get('main').canvas.getContext('2d');
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
         const tm = ctx.measureText(this.getText);
@@ -599,14 +583,14 @@ class Moji {
     }
 }
 class label extends Mono {
-    constructor(text, x, y, { size = TEXT_SIZE.NORMAL, color = COLOR.WHITE, font = 'FontAwesome', weight = 'normal', align = 0, valign = 0 } = {}) {
+    constructor(text, x, y, { size = TEXT_SIZE.NORMAL, color = THEME.TEXT, font = FONT.DEFAULT.NAME, weight = 'normal', align = 0, valign = 0 } = {}) {
         super(new Moji());
         this.moji.set(text, { x, y, size, color, font, weight, align, valign });
     }
 }
 class Brush {
     constructor() {
-        this.color = COLOR.WHITE;
+        this.color = 'white';
         return [new Pos(), this];
     }
     reset() { }
@@ -655,22 +639,22 @@ class Tsubu extends Mono {
     }
 }
 class Menu extends Mono {
-    constructor(x, y, size, { icon = EMOJI.CAT, align = 1 } = {}) {
+    constructor(x, y, size, { icon = EMOJI.CAT, align = 1, color = THEME.TEXT, highlite = THEME.HIGHLITE } = {}) {
         super(new Pos(), new Child());
         this.pos.x = x;
         this.pos.y = y;
         this.pos.align = align;
         this.size = size;
         this.index = 0;
-        this.color = COLOR.WHITE;
-        this.highlite = COLOR.YELLOW;
+        this.color = color;
+        this.highlite = highlite;
         this.isEnableCancel = true;
-        this.child.add(this.curL = new label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, align: 2, valign: 1 }));
-        this.child.add(this.curR = new label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, valign: 1 }));
+        this.child.add(this.curL = new label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: FONT.EMOJI.NAME, align: 2, valign: 1 }));
+        this.child.add(this.curR = new label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: FONT.EMOJI.NAME, valign: 1 }));
         this.indexOffset = this.child.objs.length;
     }
     add(text) {
-        this.child.add(new label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, font: 'Kaisei Decol', align: this.pos.align, valign: 1 }))
+        this.child.add(new label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }))
     }
     *stateSelect(newIndex = this.index) {
         const length = this.child.objs.length - this.indexOffset;
@@ -704,19 +688,22 @@ class Menu extends Mono {
     static get cancel() { return 'cancel' };
 }
 class BaddieData {
-    constructor(name, char, size, hp, point) {
+    constructor(name, char, color, size, hp, point, routine) {
         this.name = name;
         this.char = char;
+        this.color = color;
         this.size = size;
         this.hp = hp;
         this.point = point;
+        this.routine = routine;
     }
 }
 export const gameData = {
     baddies: {
-        obake: new BaddieData('obake', EMOJI.GHOST, 40, 5, 200),
-        crow: new BaddieData('crow', EMOJI.CROW, 40, 5, 100),
-        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, 120, 100, 100)
+        obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1'),
+        crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1'),
+        dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2'),
+        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1')
     }
 };
 // class SpawnData {
@@ -747,7 +734,7 @@ export const shared = {
         total: new scoreData(),
         before: new scoreData()
     }
-};
+}
 class Watch extends Mono {
     constructor() {
         super(new Pos(), new Child());
@@ -765,8 +752,8 @@ class SceneTitle extends Mono {
         //タイトル
         const titleSize = game.width / 11;
         const titleY = game.height * 0.25;
-        this.child.add(new label(text.title, game.width * 0.5, titleY, { size: titleSize, color: COLOR.YELLOW, font: 'Kaisei Decol', align: 1, valign: 1 }));
-        this.child.add(new label(text.title2, game.width * 0.5, titleY + titleSize * 1.5, { size: titleSize, color: COLOR.WHITE, font: 'Kaisei Decol', align: 1, valign: 1 }));
+        this.child.add(new label(text.title, game.width * 0.5, titleY, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
+        this.child.add(new label(text.title2, game.width * 0.5, titleY + titleSize * 1.5, { size: titleSize, align: 1, valign: 1 }));
         //メニュー
         this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, titleSize));
         this.titleMenu.isEnableCancel = false;
@@ -774,8 +761,8 @@ class SceneTitle extends Mono {
         this.titleMenu.add(text.highscore);
         this.titleMenu.add(text.credit);
         //操作説明
-        this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { color: COLOR.WHITE, font: 'Kaisei Decol', align: 1, valign: 1 }));
-        this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { color: COLOR.WHITE, font: 'Kaisei Decol', align: 1, valign: 1 }));
+        this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
+        this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { align: 1, valign: 1 }));
         game.setState(this.stateDefault());
     }
     *stateDefault() {
@@ -811,7 +798,7 @@ class ScenePlay extends Mono {
         this.ui.child.add(this.fpsView = new label(() => `FPS: ${game.fps}`, game.width - 2, 2, { font: 'Impact' }));
         this.fpsView.pos.align = 2;
         this.telopText = '';
-        this.ui.child.add(this.telop = new label('', game.width * 0.5, game.height * 0.5, { size: TEXT_SIZE.MEDIUM, color: COLOR.YELLOW, font: 'Kaisei Decol', align: 1, valign: 1 }));
+        this.ui.child.add(this.telop = new label('', game.width * 0.5, game.height * 0.5, { size: TEXT_SIZE.MEDIUM, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.telop.isExist = false;
         // this.child.add(this.debug = new Watch());
         // this.debug.pos.y = 40;
@@ -843,10 +830,10 @@ class ScenePlay extends Mono {
             targets.child.each((target) => {
                 if (!bullet.collision.ishit(target)) return;
                 bullet.putback();
-                target.color.flash(COLOR.WHITE);
+                target.color.flash('white');
                 shared.playData.total.score += target.unit.point;
                 if (!target.unit.isBanish(1)) return;
-                this.effect.emittCircle(8, 300, 0.5, COLOR.WHITE, target.pos.x, target.pos.y, 0.97)
+                this.effect.emittCircle(8, 300, 0.5, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
                 shared.playData.total.ko += target.defeat();
             })
         }
@@ -888,36 +875,37 @@ class ScenePlay extends Mono {
             this.player.receiveInput();
         }
     }
-    * stageRunner(stage) {
-        const temp = [...stage].sort((a, b) => a.time < b.time);
-        let timeCounter = 0;
-        for (const d of temp) {
-            while (d.time > timeCounter) {
-                timeCounter += game.delta;
-                yield undefined;
-            }
-            this.baddies.spawn(d.x, d.y, d.name);
-        }
-    }
-    * stageRunner2() {
+    // * stageRunner(stage) {
+    //     const temp = [...stage].sort((a, b) => a.time < b.time);
+    //     let timeCounter = 0;
+    //     for (const d of temp) {
+    //         while (d.time > timeCounter) {
+    //             timeCounter += game.delta;
+    //             yield undefined;
+    //         }
+    //         this.baddies.spawn(d.x, d.y, d.name);
+    //     }
+    // }
+    * stageDefault() {
         this.elaps = 0;
         let phaseLength = 5;
         let maxSpawn = 10;
         let spawnInterval = 1;
-        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-            if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
-                yield undefined;
-                continue;
-            }
-            yield* waitForTime(spawnInterval);
-            this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), 'crow', this);
-        }
+        // const baddies = ['crow', 'dove'];
+        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+        //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
+        //         yield undefined;
+        //         continue;
+        //     }
+        //     yield* waitForTime(spawnInterval);
+        //     this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this);
+        // }
         if (this.isFailure) return;
-        yield* this.showTelop('WARNING!', 2, 0.25);
+        yield* this.showTelop('ボスが現れたぞ～～～!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.2, 'greatcrow', this);
         yield* waitForFrag(() => boss.unit.isDefeat);
         this.player.unit.invincible = true;
-        yield* this.showTelop('束の間の安息を得た', 2);
+        yield* this.showTelop('お見事！', 2);
     }
     startGame() {
         shared.playData.before = new scoreData();
@@ -938,8 +926,8 @@ class ScenePlay extends Mono {
         this.baddies.child.putbackAll();
         this.baddies.bullets.child.putbackAll();
         this.effect.child.putbackAll();
-        this.state.run(this.stageRunner2());
-        game.clearBlur();
+        this.state.run(this.stageDefault());
+        game.layer.clearBlur('effect');
         this.telop.isExist = false;
     }
 }
@@ -971,7 +959,7 @@ class Player extends Mono {
     reset() {
         this.resetMix();
         this.isExist = true;
-        this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: COLOR.BLACK, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: FONT.EMOJI.NAME, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.reset();
         this.unit.hp = 1;
@@ -995,7 +983,7 @@ class Player extends Mono {
             this.bulletCooltime = PLAYER_FIRELATE;
             let lr = -1;
             for (let i = 0; i < 2; i++) {
-                this.bullets.firing(this.pos.x + (10 * lr), this.pos.y, 0, -PLAYER_BULLET_SPEED, COLOR.YELLOW);
+                this.bullets.firing(this.pos.x + (10 * lr), this.pos.y, 0, -PLAYER_BULLET_SPEED, 'yellow');
                 lr *= -1;
             }
         } else {
@@ -1016,7 +1004,7 @@ class Player extends Mono {
         const pos = this.pos;
         const x = this.pos.getScreenX();
         const y = pos.getScreenY();
-        ctx.fillStyle = COLOR.YELLOW;
+        ctx.fillStyle = 'yellow';
         ctx.fillRect(x + 31, y + 5, 10, 8);
     }
 }
@@ -1024,13 +1012,10 @@ class Baddies extends Mono {
     constructor() {
         super(new Child());
         this.bullets = new BulletBox();
-        this.bulletPattern = {};
-        this.bulletPattern['multiway'] = this._bulletMulitWay;
-        for (const bad of Object.values(gameData.baddies)) {
-            this.child.addCreator(bad.name, () => {
+        this.routines = this.createRoutine();
+        for (const data of Object.values(gameData.baddies)) {
+            this.child.addCreator(data.name, () => {
                 const baddie = new Baddie();
-                baddie.bullets = this.bullets;
-                baddie.shot = this.bulletPattern['multiway'];
                 return baddie;
             });
         }
@@ -1038,49 +1023,74 @@ class Baddies extends Mono {
     spawn(x, y, name, scene) {
         const data = gameData.baddies[name];
         const baddie = this.child.get(name);
-        baddie.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: COLOR.BLACK, align: 1, valign: 1 });
+        baddie.state.run(this.routines[data.routine](this.bullets, baddie, scene));
+        baddie.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: FONT.EMOJI.NAME, align: 1, valign: 1 });
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.hp = data.hp;
         baddie.unit.point = data.point;
-        baddie.scene = scene;
-        baddie.bulletCooltime = 0.1;
         return baddie;
     }
-    _bulletMulitWay(bullets, x, y, { deg = 270, space = 15, n = 5, isAim = true, tx = 0, ty = 0 } = {}) {
-        let d = deg;
-        if (isAim) d = Util.xyToDeg(tx - x, ty - y);
-        const offset = space * (n - 1) / 2;
-        for (let i = 0; i < n; i++) {
-            bullets.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * BADDIES_BULLET_SPEED, Util.degToY(((d - offset) + (space * i)) % 360) * BADDIES_BULLET_SPEED, COLOR.RED);
+    createRoutine() {
+        return {
+            zako1: function* (bullets, user, scene) {
+                while (true) {
+                    yield undefined;
+                    Shot.mulitWay(bullets,user.pos.x, user.pos.y);
+                    yield* waitForTime(2);
+                }
+            },
+            zako2: function* (bullets, user, scene) {
+                while (true) {
+                    yield undefined;
+                    for (let i = 0; i < 3; i++) {
+                        Shot.mulitWay(bullets,user.pos.x, user.pos.y,{ count: 3, isAim: true, tx: scene.player.target.pos.x, ty: scene.player.target.pos.y, color: 'yellow' });
+                        yield* waitForTime(0.2);
+                    }
+                    yield* waitForTime(2);
+                }
+            },
+            boss1: function* (bullets, user, scene) {
+                yield* waitForTime(0.5);
+                while (true) {
+                    yield undefined;
+                    const count = 36;
+                    for (let i = 0; i < 8; i++) {
+                        Shot.circle(bullets, user.pos.x, user.pos.y,  { count: count, offset: ((360 / count) * 0.5) * (i % 2) });
+                        yield* waitForTime(0.5);
+                    }
+                }
+            }
         }
-        return BADDIE_FIRELATE;
     }
 }
 class Baddie extends Mono {
     constructor() {
-        super(new Moji(), new Collision(), new Unit());
-        this.scene;
-        this.bulletCooltime = 0;
-        this.bullets;
-        this.shot;
-    }
-    update() {
-        if (this.bulletCooltime <= 0) {
-            this.bulletCooltime = this.shot(this.bullets, this.pos.x, this.pos.y, { isAim: true, tx: this.scene.player.pos.x, ty: this.scene.player.pos.y });
-        } else {
-            this.bulletCooltime -= 1 * game.delta;
-        }
+        super(new State(), new Moji(), new Collision(), new Unit());
     }
     draw(ctx) {
-        const pos = this.pos;
-        const x = pos.getScreenX();
-        const y = pos.getScreenY();
-        ctx.fillStyle = COLOR.YELLOW;
-        ctx.fillRect(x + pos.width * 0.65, y + pos.height * 0.10, pos.width * 0.125, pos.height * 0.125);
+        // const pos = this.pos;
+        // ctx.fillStyle = COLOR.YELLOW;
+        // ctx.fillRect(pos.getScreenX() + pos.width * 0.65, pos.getScreenY() + pos.height * 0.10, pos.width * 0.125, pos.height * 0.125);
     }
     defeat() {
         this.putback();
         return 1;
+    }
+}
+class Shot {
+    static mulitWay(bullets, x, y, { deg = 270, space = 15, count = 5, speed = 150, color = 'red', isAim = false, tx = 0, ty = 0 } = {}) {
+        let d = deg;
+        if (isAim) d = Util.xyToDeg(tx - x, ty - y);
+        const offset = space * (count - 1) / 2;
+        for (let i = 0; i < count; i++) {
+            bullets.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color);
+        }
+    }
+    static circle(bullets, x, y, { count = 36, offset = 0, speed = 150, color = 'red', } = {}) {
+        const d = 360 / count;
+        for (let i = 0; i < count; i++) {
+            bullets.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, color);
+        }
     }
 }
 class BulletBox extends Mono {
@@ -1105,10 +1115,10 @@ class ScenePause extends Mono {
     constructor() {
         super(new Child());
         this.child.drawlayer = 'ui';
-        this.child.add(new Tofu().set(0, 0, game.width, game.height, Util.hexColor(COLOR.BLACK, 127)));
+        this.child.add(new Tofu().set(0, 0, game.width, game.height, Util.hexColor('#000000', 127)));
         const titleSize = game.width / 11;
         let titleY = game.height * 0.25;
-        this.child.add(new label(text.pause, game.width * 0.5, titleY, { size: titleSize, color: COLOR.YELLOW, font: 'Kaisei Decol', align: 1, valign: 1 }));
+        this.child.add(new label(text.pause, game.width * 0.5, titleY, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, titleSize));
         this.menu.add(text.resume);
         this.menu.add(text.restart);
@@ -1116,9 +1126,9 @@ class ScenePause extends Mono {
     }
     *stateDefault() {
         game.pushScene(this);
-        game.isPauseBlur = true;
+        game.layer.get('effect').isPauseBlur = true;
         const result = yield* this.menu.stateSelect();
-        game.isPauseBlur = false;
+        game.layer.get('effect').isPauseBlur = false;
         game.popScene();
         return result;
     }
@@ -1129,7 +1139,7 @@ class SceneGameOver extends Mono {
         this.child.drawlayer = 'ui';
         const titleSize = game.width / 11;
         let titleY = game.height * 0.25;
-        this.child.add(new label(text.gameover, game.width * 0.5, titleY, { size: titleSize, color: COLOR.YELLOW, font: 'Kaisei Decol', align: 1, valign: 1 }));
+        this.child.add(new label(text.gameover, game.width * 0.5, titleY, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, titleSize));
         this.menu.isEnableCancel = false;
         this.menu.add(text.continue);
@@ -1143,15 +1153,15 @@ class SceneGameOver extends Mono {
     }
 }
 export const game = new Game();
-game.preLoad('Kaisei+Decol');
+game.preLoad(FONT.DEFAULT, FONT.EMOJI);
 game.start(() => {
     game.input.keybind('z', 'z', { button: 1 });
     game.input.keybind('x', 'x', { button: 0 });
     //背景
-    const ctx = game.layers['bg'].getContext('2d');
+    const ctx = game.layer.get('bg').canvas.getContext('2d');
     const grad = ctx.createLinearGradient(0, 0, 0, game.height);
-    grad.addColorStop(0, "#611180");
-    grad.addColorStop(1, "#253FB0");
+    grad.addColorStop(0, "#2B4C99");
+    grad.addColorStop(1, "#AFC8E4");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, game.width, game.height);
 
