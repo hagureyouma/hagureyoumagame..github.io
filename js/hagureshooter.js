@@ -784,10 +784,11 @@ class ScenePlay extends Mono {
         //プレイヤー
         this.child.add(this.playerside = new Mono(new Child()));
         this.playerside.child.add(this.player = new Player());
-        this.child.add(this.player.bullets);
+        this.child.add(this.playerbullets = new BulletBox());
+        this.player.reset(this.playerbullets, this);
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
-        this.child.add(this.baddies.bullets);
+        this.child.add(this.baddiesbullets = new BulletBox());
         //パーティクル
         this.child.add(this.effect = new Tsubu());
         this.effect.child.drawlayer = 'effect';
@@ -837,8 +838,8 @@ class ScenePlay extends Mono {
                 shared.playData.total.ko += target.defeat();
             })
         }
-        this.player.bullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
-        this.baddies.bullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
+        this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
+        this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
         this.elaps += game.delta;
         shared.playData.total.time += game.delta;
     }
@@ -872,7 +873,7 @@ class ScenePlay extends Mono {
                 }
                 this.isActive = true;
             }
-            this.player.receiveInput();
+            this.player.maneuver();
         }
     }
     // * stageRunner(stage) {
@@ -898,14 +899,14 @@ class ScenePlay extends Mono {
         //         continue;
         //     }
         //     yield* waitForTime(spawnInterval);
-        //     this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this);
+        //     this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)],this.baddiesbullets,  this);
         // }
         if (this.isFailure) return;
         yield* this.showTelop('ボスが現れたぞ～～～!', 2, 0.25);
-        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.2, 'greatcrow', this);
+        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.2, 'greatcrow', this.baddiesbullets, this);
         yield* waitForFrag(() => boss.unit.isDefeat);
         this.player.unit.invincible = true;
-        yield* this.showTelop('お見事！', 2);
+        yield* this.showTelop('ステージクリア！', 2);
     }
     startGame() {
         shared.playData.before = new scoreData();
@@ -921,10 +922,10 @@ class ScenePlay extends Mono {
         this.resetStage();
     }
     resetStage() {
-        this.player.reset();
-        this.player.bullets.child.putbackAll();
+        this.player.reset(this.playerbullets, this);
+        this.playerbullets.child.putbackAll();
         this.baddies.child.putbackAll();
-        this.baddies.bullets.child.putbackAll();
+        this.baddiesbullets.child.putbackAll();
         this.effect.child.putbackAll();
         this.state.run(this.stageDefault());
         game.layer.clearBlur('effect');
@@ -951,21 +952,20 @@ class Unit {
 }
 class Player extends Mono {
     constructor() {
-        super(new Moji(), new Collision(), new Unit());
-        this.bulletCooltime = 0;
-        this.bullets = new BulletBox();
-        this.reset();
+        super(new State(), new Moji(), new Collision(), new Unit());
+        this.firing = false;
     }
-    reset() {
+    reset(bullets, scene) {
+        this.firing = false;
         this.resetMix();
+        this.state.run(this.stateDefault(this, bullets, scene));
         this.isExist = true;
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: FONT.EMOJI.NAME, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.reset();
         this.unit.hp = 1;
-        this.bulletCooltime = 0.2;
     }
-    receiveInput() {
+    maneuver() {
         this.pos.vx = 0;
         this.pos.vy = 0;
         if (game.input.IsDown('left')) this.pos.vx = -PLAYER_MOVE_SPEED;
@@ -976,23 +976,20 @@ class Player extends Mono {
             this.pos.vx *= Util.nanameCorrect;
             this.pos.vy *= Util.nanameCorrect;
         }
-        if (game.input.IsDown('z')) this.shot();
+        if (game.input.IsDown('z')) this.firing = true;
     }
-    shot() {
-        if (this.bulletCooltime < 0) {
-            this.bulletCooltime = PLAYER_FIRELATE;
-            let lr = -1;
-            for (let i = 0; i < 2; i++) {
-                this.bullets.firing(this.pos.x + (10 * lr), this.pos.y, 0, -PLAYER_BULLET_SPEED, 'yellow');
-                lr *= -1;
+    *stateDefault(user, bullets, scene) {
+        yield* waitForTime(0.2);
+        while (true) {
+            if (!this.firing) {
+                yield undefined;
+                continue;
             }
-        } else {
-            this.bulletCooltime -= 1 * game.delta;
+            Shot.mulitWay(bullets, user.pos.x + 10, user.pos.y, { deg: 90, count: 1, speed: PLAYER_BULLET_SPEED, color: 'yellow' });
+            Shot.mulitWay(bullets, user.pos.x - 10, user.pos.y, { deg: 90, count: 1, speed: PLAYER_BULLET_SPEED, color: 'yellow' });
+            this.firing = false;
+            yield* waitForTime(0.125);
         }
-    }
-    defeat() {
-        this.isExist = false;
-        return 0;
     }
     postUpdate() {
         const halfX = this.pos.width * 0.5;
@@ -1007,23 +1004,21 @@ class Player extends Mono {
         ctx.fillStyle = 'yellow';
         ctx.fillRect(x + 31, y + 5, 10, 8);
     }
+    defeat() {
+        this.isExist = false;
+        return 0;
+    }
 }
 class Baddies extends Mono {
     constructor() {
         super(new Child());
-        this.bullets = new BulletBox();
         this.routines = this.createRoutine();
-        for (const data of Object.values(gameData.baddies)) {
-            this.child.addCreator(data.name, () => {
-                const baddie = new Baddie();
-                return baddie;
-            });
-        }
+        for (const data of Object.values(gameData.baddies)) this.child.addCreator(data.name, () => new Baddie());
     }
-    spawn(x, y, name, scene) {
+    spawn(x, y, name, bullets, scene) {
         const data = gameData.baddies[name];
         const baddie = this.child.get(name);
-        baddie.state.run(this.routines[data.routine](this.bullets, baddie, scene));
+        baddie.state.run(this.routines[data.routine](baddie, bullets, scene));
         baddie.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: FONT.EMOJI.NAME, align: 1, valign: 1 });
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.hp = data.hp;
@@ -1032,30 +1027,30 @@ class Baddies extends Mono {
     }
     createRoutine() {
         return {
-            zako1: function* (bullets, user, scene) {
+            zako1: function* (user, bullets, scene) {
                 while (true) {
                     yield undefined;
-                    Shot.mulitWay(bullets,user.pos.x, user.pos.y);
+                    Shot.mulitWay(bullets, user.pos.x, user.pos.y);
                     yield* waitForTime(2);
                 }
             },
-            zako2: function* (bullets, user, scene) {
+            zako2: function* (user, bullets, scene) {
                 while (true) {
                     yield undefined;
                     for (let i = 0; i < 3; i++) {
-                        Shot.mulitWay(bullets,user.pos.x, user.pos.y,{ count: 3, isAim: true, tx: scene.player.target.pos.x, ty: scene.player.target.pos.y, color: 'yellow' });
+                        Shot.mulitWay(bullets, user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.target.pos.x, ty: scene.player.target.pos.y, color: 'yellow' });
                         yield* waitForTime(0.2);
                     }
                     yield* waitForTime(2);
                 }
             },
-            boss1: function* (bullets, user, scene) {
+            boss1: function* (user, bullets, scene) {
                 yield* waitForTime(0.5);
                 while (true) {
                     yield undefined;
                     const count = 36;
                     for (let i = 0; i < 8; i++) {
-                        Shot.circle(bullets, user.pos.x, user.pos.y,  { count: count, offset: ((360 / count) * 0.5) * (i % 2) });
+                        Shot.circle(bullets, user.pos.x, user.pos.y, { count: count, offset: ((360 / count) * 0.5) * (i % 2) });
                         yield* waitForTime(0.5);
                     }
                 }
