@@ -69,16 +69,22 @@ class Game {
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = COLOR.BLACK;
         this.screenRect = new Rect().set(0, 0, width, height);
+        this.layer = new Layer();
+        this.layer.add(LAYER_NAME, 'aaa', 'bbb', LAYER_NAME);
         this.layers = {};
+        const div = document.createElement('div');
+        div.style.position = 'relative';
+        div.style.display = 'block';
+        div.style.width = `${width}px`;
+        div.style.height = `${height}px`;
+        div.style.margin = '1rem auto';
+        document.body.insertAdjacentElement('beforebegin', div);
         for (const layer of LAYER_NAME) {
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
             canvas.style.position = 'absolute';
-            canvas.style.left = 0
-            canvas.style.right = 0;
-            canvas.style.margin = '0 auto';
-            document.body.appendChild(this.layers[layer] = canvas);
+            div.appendChild(this.layers[layer] = canvas);
         }
         const bg = this.layers['bg'].getContext('2d');
         bg.fillStyle = COLOR.BLACK;
@@ -168,6 +174,57 @@ class Game {
         blurCtx.clearRect(0, 0, this.width, this.height);
     }
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)) };
+}
+class Layer {
+    constructor(width, height) {
+        this.width = width;
+        this.height = height;
+        this.layers = new Map();
+        this.div;
+        this.div = document.createElement('div');
+        this.div.style.position = 'relative';
+        this.div.style.display = 'block';
+        this.div.style.width = `${width}px`;
+        this.div.style.height = `${height}px`;
+        this.div.style.margin = '1rem auto';
+        document.body.insertAdjacentElement('beforebegin', this.div);
+    }
+    before() {
+        for (const layer of this.layers.values()) {
+            if (!layer.isUpdate) continue;
+            layer.getContext('2d').clearRect(0, 0, this.width, this.height);
+            if (!layer.blur) continue;
+            layer.canvas.getContext('2d').drawImage(layer.blur, 0, 0);
+        }
+    }
+    after() {
+        for (const layer of this.layers.values()) {
+            if (!layer.isUpdate) continue;
+            if (!layer.blur || layer.isPauseBlur) continue;
+            const blur = layer.blur.getContext('2d');
+            blur.clearRect(0, 0, this.width, this.height);
+            blur.globalAlpha = 0.6;
+            blur.drawImage(layer.canvas, 0, 0);
+        }
+    }
+    add(name) {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.width;
+        canvas.height = this.height;
+        canvas.style.position = 'absolute';
+        this.div.appendChild(canvas);
+        this.layers.set(name, { canvas: canvas, isUpdate: true, blur: undefined, isPauseBlur: false });
+    }
+    get = (name) => this.layers.get(name);
+    enableBlur(name) {
+        const layer = this.layers.get(name);
+        if (!layer.blur) {
+            const blur = document.createElement('canvas');
+            blur.width = this.width;
+            blur.height = this.height;
+            layer.blur = blur;
+        };
+    }
 }
 class Input {
     constructor() {
