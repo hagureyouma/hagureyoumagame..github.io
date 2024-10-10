@@ -304,14 +304,11 @@ class Rect {
 }
 class Mono {
     constructor(...args) {
-        this.id = -1;
-        this.remove = () => {
-            this.belong.child.remove(this);
-        };
-        this.isExist = true;
-        this.isActive = true;
+        this.isExist = this.isActive = true;
         this.mixs = [];
-        this.belong;
+        this.childIndex = -1;
+        this.parent;
+        this.remove;
         for (const arg of args) {
             if (Array.isArray(arg)) {
                 for (const mix of arg) this.addMix(mix);
@@ -427,9 +424,11 @@ class Collision {
     }
 }
 class Child {
-    static grave = {};
-    static clean(){
-        this.grave.clear();
+    static grave = [];
+    static clean() {
+        if (grave.length === 0) return;
+        for (const obj of grave) obj.parent.child.objs.splice(obj.childIndex);
+        this.grave = [];
     }
     constructor() {
         this.creator = {};
@@ -447,12 +446,12 @@ class Child {
         if (name in this.reserves === false) this.reserves[name] = [];
         if (this.reserves[name].length === 0) {
             obj = this.creator[name]();
-            obj.id = this.objs.length;
-            obj.belong = this;
+            obj.childIndex = this.objs.length;
+            obj.parent = this;
             obj.remove = () => {
                 obj.isExist = false;
                 obj.resetMix();
-                this.reserves[name].push(obj.id);
+                this.reserves[name].push(obj.childIndex);
                 this.liveCount--;
             }
             this.objs.push(obj);
@@ -463,17 +462,22 @@ class Child {
         this.liveCount++;
         return obj;
     }
-    add = (obj) => this.objs.push(obj);
-    remove(obj) {
-        obj.isExist = false;
-        grave.push(obj);
-    }
-    pop = () => this.objs.pop();
-    removeAll() {
-        for (const obj of this.objs) {
-            if (!obj.isExist || obj.id < 0) continue;
-            obj.remove();
+    add(obj) {
+        obj.childIndex = this.objs.length;
+        obj.parent = this;
+        obj.remove = () => {
+            if (!obj.parent) return;
+            obj.isExist = false;
+            Child.grave.push(obj);
         }
+        this.objs.push(obj);
+    }
+    pop() {
+        const obj = this.objs.pop();
+        obj.parent = undefined;
+    }
+    removeAll() {
+        for (const obj of this.objs) obj.remove();
     }
     update() {
         for (const obj of this.objs) obj.baseUpdate();
@@ -968,7 +972,6 @@ class ScenePlay extends Mono {
         this.effect.child.removeAll();
         this.state.run(this.stageDefault());
         game.layers.get('effect').clearBlur();
-        this.gauge.isExist = false;
         this.telop.isExist = false;
     }
 }
