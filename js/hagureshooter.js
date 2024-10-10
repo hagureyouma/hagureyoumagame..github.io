@@ -46,10 +46,10 @@ const EMOJI = {
 }
 Object.freeze(EMOJI);
 
-const LAYER_NAMES = ['bg', 'main', 'effect', 'ui'];
+const LAYER_NAMES = ['effect', 'ui'];
 
 let text = {
-    title: 'シューティングゲーム', title2: 'のようなもの', pressanykey: 'Xキーを押してね',
+    title: 'シューティングゲーム', title2: 'のようなもの', presskey: 'Zキーを押してね',
     explanation1: '操作方法：↑↓←→ 選択、移動',
     explanation2: 'Z 決定、攻撃　X 取消、中断',
     start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
@@ -69,26 +69,16 @@ class Game {
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
-        this.layer = new Layer(width, height);
-        this.layer.add(LAYER_NAMES);
-        const bg = this.layer.get('bg');
-        bg.isUpdate = false;
-        const bgctx = bg.canvas.getContext('2d');
-        bgctx.fillStyle = 'black';
-        bgctx.fillRect(0, 0, this.width, this.height);
-        this.layer.enableBlur('effect');
+        this.layers = new Layers(width, height);
         this.root = new Mono(new State(), new Child());
         this.input = new Input();
-        this.time;
-        this.delta;
+        this.time = this.delta = 0;
         this.fpsBuffer = Array.from({ length: 60 });
-        this.asettsName;
+        this.asettsName = '';
     }
     get width() { return this.screenRect.width };
     get height() { return this.screenRect.height };
-    preLoad() {
-        this.asettsName = arguments;
-    }
+    preLoad() { this.asettsName = arguments; }
     start(create) {
         (async () => {
             const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
@@ -138,9 +128,9 @@ class Game {
         this.fpsBuffer.shift();
         this.input.update();
         this.root.baseUpdate();
-        this.layer.before();
-        this.root.baseDraw(this.layer.get('main').canvas.getContext('2d'));
-        this.layer.after();
+        this.layers.before();
+        this.root.baseDraw(this.layers.get('main').getContext());
+        this.layers.after();
         requestAnimationFrame(this.mainloop.bind(this));
     }
     pushScene = scene => this.root.child.add(scene);
@@ -149,46 +139,33 @@ class Game {
     isOutOfRange = (rect) => !this.screenRect.isIntersect(rect);
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)) };
 }
-class Layer {
+class Layers {
     constructor(width, height) {
+        this.layers = new Map();
         this.width = width;
         this.height = height;
-        this.layers = new Map();
-        this.div = document.createElement('div');
-        this.div.style.position = 'relative';
-        this.div.style.display = 'block';
-        this.div.style.width = `${width}px`;
-        this.div.style.height = `${height}px`;
-        this.div.style.margin = '1rem auto';
-        document.body.insertAdjacentElement('beforebegin', this.div);
+        const div = this.div = document.createElement('div');
+        div.style.position = 'relative';
+        div.style.display = 'block';
+        div.style.width = `${width}px`;
+        div.style.height = `${height}px`;
+        div.style.margin = '1rem auto';
+        document.body.insertAdjacentElement('beforebegin', div);
+        this.add('bg');
+        this.add('main')
+        const bg = this.get('bg');
+        bg.isUpdate = false;
+        const bgctx = bg.getContext();
+        bgctx.fillStyle = 'black';
+        bgctx.fillRect(0, 0, width, height);
     }
-    before() {
-        for (const layer of this.layers.values()) {
-            if (!layer.isUpdate) continue;
-            const ctx = layer.canvas.getContext('2d');
-            ctx.clearRect(0, 0, this.width, this.height);
-            if (!layer.blur) continue;
-            ctx.drawImage(layer.blur, 0, 0);
-        }
-    }
-    after() {
-        for (const layer of this.layers.values()) {
-            if (!layer.isUpdate) continue;
-            if (!layer.blur || layer.isPauseBlur) continue;
-            const ctx = layer.blur.getContext('2d');
-            ctx.clearRect(0, 0, this.width, this.height);
-            ctx.globalAlpha = 0.6;
-            ctx.drawImage(layer.canvas, 0, 0);
-        }
-    }
+    before() { for (const layer of this.layers.values()) layer.before(); }
+    after() { for (const layer of this.layers.values()) layer.after(); }
     add(names) {
         const create = (name) => {
-            const canvas = document.createElement('canvas');
-            canvas.width = this.width;
-            canvas.height = this.height;
-            canvas.style.position = 'absolute';
-            this.div.appendChild(canvas);
-            this.layers.set(name, { canvas: canvas, isUpdate: true, blur: undefined, isPauseBlur: false });
+            const layer = new Layer(this.width, this.height);
+            this.div.appendChild(layer.canvas);
+            this.layers.set(name, layer);
         }
         if (Array.isArray(names)) {
             for (const name of names) create(name);
@@ -197,17 +174,40 @@ class Layer {
         create(names);
     }
     get = (name) => this.layers.get(name);
-    enableBlur(name) {
-        const layer = this.layers.get(name);
-        if (!layer.blur) {
-            const blur = document.createElement('canvas');
-            blur.width = this.width;
-            blur.height = this.height;
-            layer.blur = blur;
-        };
+}
+class Layer {
+    constructor(width, height) {
+        const canvas = this.canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.position = 'absolute';
+        this.isUpdate = true;
+        this.blur;
+        this.isPauseBlur = false
     }
-    clearBlur(name) {
-        this.layers.get(name).blur.getContext('2d').clearRect(0, 0, this.width, this.height);
+    getContext = () => this.canvas.getContext('2d');
+    getBlurContext = () => this.blur.getContext('2d');
+    clear = () => this.getContext().clearRect(0, 0, this.canvas.width, this.canvas.height);
+    clearBlur = () => this.getBlurContext().clearRect(0, 0, this.canvas.width, this.canvas.height);
+    enableBlur() {
+        if (this.blur) return;
+        const blur = this.blur = document.createElement('canvas');
+        blur.width = this.canvas.width;
+        blur.height = this.canvas.height;
+    }
+    before() {
+        if (!this.isUpdate) return;
+        const ctx = this.getContext();
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (!this.blur) return;
+        ctx.drawImage(this.blur, 0, 0);
+    }
+    after() {
+        if (!this.isUpdate || !this.blur || this.isPauseBlur) return;
+        const ctx = this.getBlurContext();
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(this.canvas, 0, 0);
     }
 }
 class Input {
@@ -222,10 +222,10 @@ class Input {
         addEventListener('keyup', this._keyEvent(false));
         addEventListener('gamepadconnected', e => this.padIndex = e.gamepad.index);
         addEventListener('gamepaddisconnected', e => this.padIndex = undefined);
-        game.input.keybind('left', 'ArrowLeft', { button: 14, axes: 0 });
-        game.input.keybind('right', 'ArrowRight', { button: 15, axes: 1 });
-        game.input.keybind('up', 'ArrowUp', { button: 12, axes: 2 });
-        game.input.keybind('down', 'ArrowDown', { button: 13, axes: 3 });
+        this.keybind('left', 'ArrowLeft', { button: 14, axes: 0 });
+        this.keybind('right', 'ArrowRight', { button: 15, axes: 1 });
+        this.keybind('up', 'ArrowUp', { button: 12, axes: 2 });
+        this.keybind('down', 'ArrowDown', { button: 13, axes: 3 });
     }
     _keyEvent(frag) {
         return e => {
@@ -265,9 +265,9 @@ class Input {
         this.keyIndex.set(key, index);
         this.keyData.push({ buffer: false, before: false, current: false, button: button, axes: axes });
     }
-    IsDown = (name) => this.keyData[this.nameIndex.get(name)].current;
-    IsPress = (name) => this.keyData[this.nameIndex.get(name)].current && !this.keyData[this.nameIndex.get(name)].before;
-    IsUp = (name) => !this.keyData[this.nameIndex.get(name)].current && this.keyData[this.nameIndex.get(name)].before;
+    isDown = (name) => this.keyData[this.nameIndex.get(name)].current;
+    isPress = (name) => this.keyData[this.nameIndex.get(name)].current && !this.keyData[this.nameIndex.get(name)].before;
+    isUp = (name) => !this.keyData[this.nameIndex.get(name)].current && this.keyData[this.nameIndex.get(name)].before;
 }
 class Util {
     static get nanameCorrect() { return 0.71 };
@@ -291,10 +291,7 @@ class Util {
 }
 class Rect {
     constructor() {
-        this.x = 0;
-        this.y = 0;
-        this.width = 0;
-        this.height = 0;
+        this.x = this.y = this.width = this.height = 0;
     }
     set(x, y, width, height) {
         this.x = x;
@@ -308,10 +305,13 @@ class Rect {
 class Mono {
     constructor(...args) {
         this.id = -1;
-        this.putback;
+        this.remove = () => {
+            this.belong.child.remove(this);
+        };
         this.isExist = true;
         this.isActive = true;
         this.mixs = [];
+        this.belong;
         for (const arg of args) {
             if (Array.isArray(arg)) {
                 for (const mix of arg) this.addMix(mix);
@@ -383,10 +383,8 @@ function* waitForTimeOrFrag(time, func) {
 }
 class Pos {
     constructor() {
-        this.x = this.y = 0;
-        this.width = this.height = 0;
-        this.align = this.valign = 0;//left top=0,center midle=1,right bottom=2
-        this.vx = this.vy = 0;
+        //align&valign left top=0,center midle=1,right bottom=2
+        this.x = this.y = this.width = this.height = this.align = this.valign = this.vx = this.vy = 0;
         this.vxc = this.vyc = 1;
         this._rect = new Rect();
     }
@@ -420,7 +418,7 @@ class Collision {
         const pos = this.owner.pos;
         return this._rect.set(Math.floor(pos.x - pos.align * this._rect.width * 0.5), Math.floor(pos.y - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
-    ishit = (obj) => this.rect.isIntersect(obj.collision.rect);
+    hit = (obj) => this.rect.isIntersect(obj.collision.rect);
     draw(ctx) {
         if (!this.isVisible) return;
         ctx.fillStyle = '#ff000080';
@@ -429,6 +427,10 @@ class Collision {
     }
 }
 class Child {
+    static grave = {};
+    static clean(){
+        this.grave.clear();
+    }
     constructor() {
         this.creator = {};
         this.objs = [];
@@ -446,7 +448,8 @@ class Child {
         if (this.reserves[name].length === 0) {
             obj = this.creator[name]();
             obj.id = this.objs.length;
-            obj.putback = () => {
+            obj.belong = this;
+            obj.remove = () => {
                 obj.isExist = false;
                 obj.resetMix();
                 this.reserves[name].push(obj.id);
@@ -461,18 +464,22 @@ class Child {
         return obj;
     }
     add = (obj) => this.objs.push(obj);
+    remove(obj) {
+        obj.isExist = false;
+        grave.push(obj);
+    }
     pop = () => this.objs.pop();
-    putbackAll() {
+    removeAll() {
         for (const obj of this.objs) {
             if (!obj.isExist || obj.id < 0) continue;
-            obj.putback();
+            obj.remove();
         }
     }
     update() {
         for (const obj of this.objs) obj.baseUpdate();
     }
     draw(ctx) {
-        let currentCtx = this.drawlayer !== '' ? game.layer.get(this.drawlayer).canvas.getContext('2d') : ctx;
+        let currentCtx = this.drawlayer !== '' ? game.layers.get(this.drawlayer).getContext() : ctx;
         for (const obj of this.objs) obj.baseDraw(currentCtx);
     }
     each(func) {
@@ -484,31 +491,27 @@ class Child {
 }
 class Jumyo {
     constructor() {
-        this.lifeSpan = 0;
-        this.lifeStage = 0;
+        this.lifeSpan = this.lifeStage = 0;
     }
     reset() {
-        this.lifeSpan = 0;
-        this.lifeStage = 0;
+        this.lifeSpan = this.lifeStage = 0;
     }
     update() {
         if (this.lifeStage < this.lifeSpan) {
             this.lifeStage = Math.min(this.lifeStage + game.delta, this.lifeSpan);
             return;
         }
-        this.owner.putback();
+        this.owner.remove();
     }
     get percentage() { return this.lifeStage / this.lifeSpan };
 }
 class Color {
     constructor() {
-        this.value = '';
-        this.baseColor = '';
+        this.value = this.baseColor = '';
         this.func;
     }
     reset() {
-        this.value = '';
-        this.baseColor = '';
+        this.value = this.baseColor = '';
         this.func = undefined;
     }
     restore() {
@@ -563,7 +566,7 @@ class Moji {
         this.size = size;
         this.font = font;
         this.owner.color.value = color;
-        const ctx = game.layer.get('main').canvas.getContext('2d');
+        const ctx = game.layers.get('main').getContext();
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
         const tm = ctx.measureText(this.getText);
@@ -577,9 +580,7 @@ class Moji {
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
         ctx.fillStyle = this.owner.color.value;
-        const x = this.owner.pos.getScreenX();
-        const y = this.owner.pos.getScreenY();
-        ctx.fillText(this.getText, x, y);
+        ctx.fillText(this.getText, this.owner.pos.getScreenX(), this.owner.pos.getScreenY());
     }
 }
 class label extends Mono {
@@ -591,13 +592,17 @@ class label extends Mono {
 class Brush {
     constructor() {
         this.color = 'white';
+        this.alpha = 1;
         return [new Pos(), this];
     }
     reset() { }
     draw(ctx) {
+        const beforeAlpha = ctx.globalAlpha;
         const pos = this.owner.pos;
         ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.alpha;
         ctx.fillRect(pos.getScreenX(), pos.getScreenY(), pos.width, pos.height);
+        ctx.globalAlpha = beforeAlpha;
     }
 }
 class Tofu extends Mono {
@@ -611,12 +616,32 @@ class Tofu extends Mono {
         return this;
     }
 }
+class Gauge extends Mono {
+    constructor() {
+        super(new Pos());
+        this.color = THEME.TEXT;
+        this.border = 2;
+        this.max = 0;
+        this.watch;
+    }
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = this.border;
+        const pos = this.pos;
+        const x = pos.getScreenX();
+        const y = pos.getScreenY();
+        const b = this.border + 1;
+        ctx.strokeRect(x, y, pos.width, pos.height);
+        ctx.fillRect(x + b, y + b, (pos.width - b * 2) * (this.watch?.() / this.max), pos.height - (b * 2));
+    }
+}
 class Tsubu extends Mono {
     constructor() {
         super(new Child());
         this.child.addCreator(Tsubu.name, () => {
-            const t = new Mono(new Brush(), new Jumyo());
-            t.update = () => t.brush.color = Util.hexColor(t.brush.baseColor, Math.floor(255 - (t.jumyo.percentage * 255)));
+            const t = new Mono(new Jumyo(), new Brush());
+            t.update = () => t.brush.alpha = t.jumyo.percentage;
             return t;
         });
     }
@@ -624,8 +649,8 @@ class Tsubu extends Mono {
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const t = this.child.get(Tsubu.name);
-            t.brush.color = t.brush.baseColor = color;
-            t.brush.alpha = 255;
+            t.brush.color = color;
+            t.brush.alpha = 1;
             t.pos.set(x, y, 8, 8);
             t.pos.align = 1;
             t.pos.valign = 1;
@@ -659,17 +684,17 @@ class Menu extends Mono {
     *stateSelect(newIndex = this.index) {
         const length = this.child.objs.length - this.indexOffset;
         function* move(key, direction) {
-            if (!game.input.IsDown(key)) return;
+            if (!game.input.isDown(key)) return;
             this.moveIndex((this.index + direction) % length);
-            yield* waitForTimeOrFrag(game.input.IsPress(key) ? KEY_REPEAT_WAIT_FIRST : KEY_REPEAT_WAIT, () => game.input.IsUp(key) || game.input.IsPress('z') || (this.isEnableCancel && game.input.IsPress('x')));
+            yield* waitForTimeOrFrag(game.input.isPress(key) ? KEY_REPEAT_WAIT_FIRST : KEY_REPEAT_WAIT, () => game.input.isUp(key) || game.input.isPress('z') || (this.isEnableCancel && game.input.isPress('x')));
         }
         this.moveIndex(newIndex);
         while (true) {
             yield undefined;
             yield* move.bind(this)('up', length - 1);
             yield* move.bind(this)('down', 1);
-            if (game.input.IsPress('z')) return this.child.objs[this.index + this.indexOffset].moji.getText;
-            if (this.isEnableCancel && game.input.IsPress('x')) return;
+            if (game.input.isPress('z')) return this.child.objs[this.index + this.indexOffset].moji.getText;
+            if (this.isEnableCancel && game.input.isPress('x')) return;
         }
     }
     moveIndex(newIndex) {
@@ -754,18 +779,34 @@ class SceneTitle extends Mono {
         const titleY = game.height * 0.25;
         this.child.add(new label(text.title, game.width * 0.5, titleY, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.child.add(new label(text.title2, game.width * 0.5, titleY + titleSize * 1.5, { size: titleSize, align: 1, valign: 1 }));
+        //ボタンを押して表示
+        this.child.add(this.presskey = new label(text.presskey, game.width * 0.5, game.height * 0.5 + titleSize * 1.5, { size: titleSize, align: 1, valign: 1 }));
+        this.presskey.color.blink(0.5);
         //メニュー
         this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, titleSize));
-        this.titleMenu.isEnableCancel = false;
+        this.titleMenu.isEnableCancel = true;
         this.titleMenu.add(text.start);
         this.titleMenu.add(text.highscore);
         this.titleMenu.add(text.credit);
-        //操作説明
-        this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
-        this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { align: 1, valign: 1 }));
+        this.titleMenu.isExist = false;
+        //操作方法
+        // this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
+        // this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { align: 1, valign: 1 }));        
         game.setState(this.stateDefault());
     }
     *stateDefault() {
+        this.presskey.color.blink(0.5);
+        while (true) {
+            yield undefined;
+            if (!game.input.isPress('z')) continue;
+            this.presskey.isExist = false;
+            yield* this.stateMenu();
+            this.presskey.isExist = true;
+            this.presskey.color.blink(0.5);
+        }
+    }
+    *stateMenu() {
+        this.titleMenu.isExist = true;
         while (true) {
             switch (yield* this.titleMenu.stateSelect()) {
                 case text.start:
@@ -773,6 +814,9 @@ class SceneTitle extends Mono {
                     yield* new ScenePlay().stateDefault();
                     this.isExist = true;
                     break;
+                default:
+                    this.titleMenu.isExist = false;
+                    return;
             }
         }
     }
@@ -798,9 +842,11 @@ class ScenePlay extends Mono {
         this.ui.child.add(this.textScore = new label(() => `SCORE ${shared.playData.total.score} KO ${shared.playData.total.ko}`, 2, 2, { font: 'Impact' }));
         this.ui.child.add(this.fpsView = new label(() => `FPS: ${game.fps}`, game.width - 2, 2, { font: 'Impact' }));
         this.fpsView.pos.align = 2;
+
         this.telopText = '';
         this.ui.child.add(this.telop = new label('', game.width * 0.5, game.height * 0.5, { size: TEXT_SIZE.MEDIUM, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.telop.isExist = false;
+
         // this.child.add(this.debug = new Watch());
         // this.debug.pos.y = 40;
         // this.debug.add(() => `ENEMY: ${this.baddies.child.liveCount}`);
@@ -825,17 +871,17 @@ class ScenePlay extends Mono {
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
             if (game.isOutOfRange(bullet.collision.rect)) {
-                bullet.putback();
+                bullet.remove();
                 return;
             }
             targets.child.each((target) => {
-                if (!bullet.collision.ishit(target)) return;
-                bullet.putback();
+                if (!bullet.collision.hit(target)) return;
+                bullet.remove();
                 target.color.flash('white');
                 shared.playData.total.score += target.unit.point;
                 if (!target.unit.isBanish(1)) return;
                 this.effect.emittCircle(8, 300, 0.5, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
-                shared.playData.total.ko += target.defeat();
+                shared.playData.total.ko += target.unit.defeat();
             })
         }
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
@@ -861,7 +907,7 @@ class ScenePlay extends Mono {
                         return;
                 }
             }
-            if (game.input.IsPress('x')) {
+            if (game.input.isPress('x')) {
                 this.isActive = false;
                 switch (yield* new ScenePause().stateDefault()) {
                     case text.restart:
@@ -876,35 +922,28 @@ class ScenePlay extends Mono {
             this.player.maneuver();
         }
     }
-    // * stageRunner(stage) {
-    //     const temp = [...stage].sort((a, b) => a.time < b.time);
-    //     let timeCounter = 0;
-    //     for (const d of temp) {
-    //         while (d.time > timeCounter) {
-    //             timeCounter += game.delta;
-    //             yield undefined;
-    //         }
-    //         this.baddies.spawn(d.x, d.y, d.name);
-    //     }
-    // }
     * stageDefault() {
         this.elaps = 0;
         let phaseLength = 5;
         let maxSpawn = 10;
         let spawnInterval = 1;
-        // const baddies = ['crow', 'dove'];
-        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     yield* waitForTime(spawnInterval);
-        //     this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)],this.baddiesbullets,  this);
-        // }
+        const baddies = ['crow', 'dove'];
+        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+            if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
+                yield undefined;
+                continue;
+            }
+            yield* waitForTime(spawnInterval);
+            this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
+        }
         if (this.isFailure) return;
-        yield* this.showTelop('ボスが現れたぞ～～～!', 2, 0.25);
+        yield* this.showTelop('WARNING!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.2, 'greatcrow', this.baddiesbullets, this);
+        this.gauge.isExist = true;
+        this.gauge.max = boss.unit.hp;
+        this.gauge.watch = () => boss.unit.hp;
         yield* waitForFrag(() => boss.unit.isDefeat);
+        this.gauge.isExist = false;
         this.player.unit.invincible = true;
         yield* this.showTelop('ステージクリア！', 2);
     }
@@ -923,12 +962,13 @@ class ScenePlay extends Mono {
     }
     resetStage() {
         this.player.reset(this.playerbullets, this);
-        this.playerbullets.child.putbackAll();
-        this.baddies.child.putbackAll();
-        this.baddiesbullets.child.putbackAll();
-        this.effect.child.putbackAll();
+        this.playerbullets.child.removeAll();
+        this.baddies.child.removeAll();
+        this.baddiesbullets.child.removeAll();
+        this.effect.child.removeAll();
         this.state.run(this.stageDefault());
-        game.layer.clearBlur('effect');
+        game.layers.get('effect').clearBlur();
+        this.gauge.isExist = false;
         this.telop.isExist = false;
     }
 }
@@ -937,57 +977,63 @@ class Unit {
         this.hp = 0;
         this.point = 0;
         this.invincible = false;
+        this.firing = false;
     }
     reset() {
         this.hp = 0;
         this.point = 0;
         this.invincible = false;
+        this.firing = false;
     }
     isBanish(damage) {
         if (this.invincible) return false;
         this.hp -= damage;
         return this.hp <= 0;
     }
+    defeat() {
+        this.owner.remove();
+        return 1;
+    }
     get isDefeat() { return this.hp <= 0 }
 }
 class Player extends Mono {
     constructor() {
         super(new State(), new Moji(), new Collision(), new Unit());
-        this.firing = false;
+        this.unit.defeat = () => {
+            this.isExist = false;
+            return 0;
+        }
     }
     reset(bullets, scene) {
-        this.firing = false;
         this.resetMix();
         this.state.run(this.stateDefault(this, bullets, scene));
         this.isExist = true;
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: FONT.EMOJI.NAME, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
-        this.unit.reset();
         this.unit.hp = 1;
     }
     maneuver() {
-        this.pos.vx = 0;
-        this.pos.vy = 0;
-        if (game.input.IsDown('left')) this.pos.vx = -PLAYER_MOVE_SPEED;
-        if (game.input.IsDown('right')) this.pos.vx = PLAYER_MOVE_SPEED;
-        if (game.input.IsDown('up')) this.pos.vy = -PLAYER_MOVE_SPEED;
-        if (game.input.IsDown('down')) this.pos.vy = PLAYER_MOVE_SPEED;
+        this.pos.vx = this.pos.vy = 0;
+        if (game.input.isDown('left')) this.pos.vx = -PLAYER_MOVE_SPEED;
+        if (game.input.isDown('right')) this.pos.vx = PLAYER_MOVE_SPEED;
+        if (game.input.isDown('up')) this.pos.vy = -PLAYER_MOVE_SPEED;
+        if (game.input.isDown('down')) this.pos.vy = PLAYER_MOVE_SPEED;
         if (this.pos.vx !== 0 && this.pos.vy !== 0) {
             this.pos.vx *= Util.nanameCorrect;
             this.pos.vy *= Util.nanameCorrect;
         }
-        if (game.input.IsDown('z')) this.firing = true;
+        if (game.input.isDown('z')) this.unit.firing = true;
     }
     *stateDefault(user, bullets, scene) {
-        yield* waitForTime(0.2);
+        yield* waitForTime(0.5);
         while (true) {
-            if (!this.firing) {
+            if (!this.unit.firing) {
                 yield undefined;
                 continue;
             }
             Shot.mulitWay(bullets, user.pos.x + 10, user.pos.y, { deg: 90, count: 1, speed: PLAYER_BULLET_SPEED, color: 'yellow' });
             Shot.mulitWay(bullets, user.pos.x - 10, user.pos.y, { deg: 90, count: 1, speed: PLAYER_BULLET_SPEED, color: 'yellow' });
-            this.firing = false;
+            this.unit.firing = false;
             yield* waitForTime(0.125);
         }
     }
@@ -1003,10 +1049,6 @@ class Player extends Mono {
         const y = pos.getScreenY();
         ctx.fillStyle = 'yellow';
         ctx.fillRect(x + 31, y + 5, 10, 8);
-    }
-    defeat() {
-        this.isExist = false;
-        return 0;
     }
 }
 class Baddies extends Mono {
@@ -1038,7 +1080,7 @@ class Baddies extends Mono {
                 while (true) {
                     yield undefined;
                     for (let i = 0; i < 3; i++) {
-                        Shot.mulitWay(bullets, user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.target.pos.x, ty: scene.player.target.pos.y, color: 'yellow' });
+                        Shot.mulitWay(bullets, user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.pos.x, ty: scene.player.pos.y, color: 'yellow' });
                         yield* waitForTime(0.2);
                     }
                     yield* waitForTime(2);
@@ -1061,15 +1103,6 @@ class Baddies extends Mono {
 class Baddie extends Mono {
     constructor() {
         super(new State(), new Moji(), new Collision(), new Unit());
-    }
-    draw(ctx) {
-        // const pos = this.pos;
-        // ctx.fillStyle = COLOR.YELLOW;
-        // ctx.fillRect(pos.getScreenX() + pos.width * 0.65, pos.getScreenY() + pos.height * 0.10, pos.width * 0.125, pos.height * 0.125);
-    }
-    defeat() {
-        this.putback();
-        return 1;
     }
 }
 class Shot {
@@ -1110,10 +1143,9 @@ class ScenePause extends Mono {
     constructor() {
         super(new Child());
         this.child.drawlayer = 'ui';
-        this.child.add(new Tofu().set(0, 0, game.width, game.height, Util.hexColor('#000000', 127)));
+        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
         const titleSize = game.width / 11;
-        let titleY = game.height * 0.25;
-        this.child.add(new label(text.pause, game.width * 0.5, titleY, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
+        this.child.add(new label(text.pause, game.width * 0.5, game.height * 0.25, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, titleSize));
         this.menu.add(text.resume);
         this.menu.add(text.restart);
@@ -1121,9 +1153,9 @@ class ScenePause extends Mono {
     }
     *stateDefault() {
         game.pushScene(this);
-        game.layer.get('effect').isPauseBlur = true;
+        game.layers.get('effect').isPauseBlur = true;
         const result = yield* this.menu.stateSelect();
-        game.layer.get('effect').isPauseBlur = false;
+        game.layers.get('effect').isPauseBlur = false;
         game.popScene();
         return result;
     }
@@ -1133,8 +1165,7 @@ class SceneGameOver extends Mono {
         super(new Child());
         this.child.drawlayer = 'ui';
         const titleSize = game.width / 11;
-        let titleY = game.height * 0.25;
-        this.child.add(new label(text.gameover, game.width * 0.5, titleY, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
+        this.child.add(new label(text.gameover, game.width * 0.5, game.height * 0.25, { size: titleSize, color: THEME.HIGHLITE, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, titleSize));
         this.menu.isEnableCancel = false;
         this.menu.add(text.continue);
@@ -1152,13 +1183,15 @@ game.preLoad(FONT.DEFAULT, FONT.EMOJI);
 game.start(() => {
     game.input.keybind('z', 'z', { button: 1 });
     game.input.keybind('x', 'x', { button: 0 });
-    //背景
-    const ctx = game.layer.get('bg').canvas.getContext('2d');
+
+    const ctx = game.layers.get('bg').getContext();
     const grad = ctx.createLinearGradient(0, 0, 0, game.height);
     grad.addColorStop(0, "#2B4C99");
     grad.addColorStop(1, "#AFC8E4");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, game.width, game.height);
 
+    game.layers.add(LAYER_NAMES);
+    game.layers.get('effect').enableBlur();
     game.pushScene(new SceneTitle());
 });
