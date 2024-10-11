@@ -6,15 +6,13 @@
     //thisは.の左のオブジェクトのこと！thisを固定するにはbindする　アロー関数=>のthisは変わらないよ
     //ゲッター・セッターはアロー関数=>に未対応
     //スプレッド構文[...配列]
+    //Mapは名前で読み書きできる配列
     //ジェネレーター構文*method(){}関数を中断と再開できる アロー関数=>はない
     //jsファイルを後から読み込むには、script要素を追加してonloadイベントで待つのがいい？
     //a=yield 1;→b=generator.next();でbに1が返ってきて、続けてgenerator.next(2)でaに2が返ってくる　yieldの外と変数のやり取りができる
     //非同期 new Promise((resolve){非同期にやりたいこと;resolve();}).then(){非同期が終わってから呼ばれる};
     //async関数はresolveが呼んであるPromiseオブジェクトをreturnするよ
     //webフォントの読み込み待ちはonloadイベントでできないみたいなのでWebFontLoaderを使った
-}
-{//ゲームプログラミングメモ
-
 }
 'use strict';
 console.clear();
@@ -285,6 +283,7 @@ class Util {
     }
     static dot = (x, y, x2, y2) => x * x2 + y * y2;
     static cross = (x, y, x2, y2) => x * y2 - y * x2;
+    static lerp = (start, end, t) => (1 - t) * start + t * end;
     static random = (min, max) => Math.floor(Math.random() * (max + 1 - min) + min);
     static average = (arr) => arr.reduce((prev, current, i, arr) => prev + current) / arr.length;
     static isGenerator = (obj) => obj && typeof obj.next === 'function' && typeof obj.throw === 'function';
@@ -599,18 +598,27 @@ class label extends Mono {
     }
 }
 class Brush {
+    static rad = Math.PI * 2;
     constructor() {
-        this.color = 'white';
-        this.alpha = 1;
+        this.reset();
         return [new Pos(), this];
     }
-    reset() { }
+    reset() {
+        this.rect();
+        this.color = 'white';
+        this.alpha = 1;
+    }
+    rect = () => this.drawer = (ctx, pos) => ctx.fillRect(pos.getScreenX(), pos.getScreenY(), pos.width, pos.height);
+    circle = () => this.drawer = (ctx, pos) => {
+        ctx.beginPath();
+        ctx.arc(pos.getScreenX(), pos.getScreenY(), pos.width * 0.5, 0, Brush.rad);
+        ctx.fill();
+    }
     draw(ctx) {
         const beforeAlpha = ctx.globalAlpha;
-        const pos = this.owner.pos;
         ctx.fillStyle = this.color;
         ctx.globalAlpha = this.alpha;
-        ctx.fillRect(pos.getScreenX(), pos.getScreenY(), pos.width, pos.height);
+        this.drawer(ctx, this.owner.pos);
         ctx.globalAlpha = beforeAlpha;
     }
 }
@@ -1123,19 +1131,21 @@ class Baddies extends Mono {
                     }
                 }
                 yield* waitForTime(0.5);
+                let currentPattern = 0;
                 while (user.unit.hpRatio > 0.5) {
-                    yield undefined;
-                    user.state.start('shot1', circleShot());
-                    yield* waitForFrag(() => !user.state.isEnable('shot1'));
+                    if (currentPattern === 0) {
+                        user.state.start('shot1', circleShot());
+                        yield* waitForFrag(() => !user.state.isEnable('shot1'));
+                    } else {
+                        user.state.start('shot2', spiralShot());
+                        yield* waitForFrag(() => !user.state.isEnable('shot2'));
+                    }
                     yield* waitForTime(2);
-                    user.state.start('shot2', spiralShot());
-                    yield* waitForFrag(() => !user.state.isEnable('shot2'));
-                    yield* waitForTime(2);
+                    currentPattern = (currentPattern + 1) % 2;
                 }
                 while (true) {
                     user.state.start('shot2', spiralShot());
                     yield* waitForTime(0.8);
-
                     user.state.start('shot1', circleShot());
                     yield* waitForFrag(() => !user.state.isEnable('shot1') && !user.state.isEnable('shot2'));
                     yield* waitForTime(2);
@@ -1178,7 +1188,8 @@ class BulletBox extends Mono {
         bullet.pos.valign = 1;
         bullet.pos.vx = vx;
         bullet.pos.vy = vy;
-        bullet.collision.set(4, 4);
+        bullet.collision.set(6, 6);
+        bullet.brush.circle();
         bullet.brush.color = color;
         return bullet;
     }
