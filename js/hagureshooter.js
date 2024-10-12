@@ -73,7 +73,7 @@ class Game {//ゲーム本体
     }
     mainloop() {
         const now = performance.now();
-        this.delta = Math.min((now - this.time) / 1000.0, 1 / 1.0);
+        this.delta = Math.min((now - this.time) / 1000.0, 1 / 60);
         this.time = now;
         this.fpsBuffer.push(this.delta);
         this.fpsBuffer.shift();
@@ -340,12 +340,12 @@ function* waitForTimeOrFrag(time, func) {//中断付きタイマー
     return true;
 }
 class Pos {//座標コンポーネント
-    constructor() {        
+    constructor() {
         this._rect = new Rect();
         this.reset();
     }
     reset() {
-        this.set(0,0,0,0);
+        this.set(0, 0, 0, 0);
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
     }
@@ -363,7 +363,7 @@ class Pos {//座標コンポーネント
 class Move {//動作コンポーネント
     constructor() {
         this.reset();
-        return [new Pos(),this];
+        return [new Pos(), this];
     }
     reset() {
         this.set(0, 0);
@@ -374,13 +374,19 @@ class Move {//動作コンポーネント
         this.vy = vy;
         this.vxc = vxc;
         this.vyc = vyc;
+        this.waveWidth = this.waveHeight = 0;
+        this.waveXspeed = this.waveYspeed = 0;
+        this.oniginX = this.originY = 0;
     }
     update() {
-        this.time = (this.time += game.delta)
-
-
-
+        this.time = (this.time += game.delta) % 1;
         const pos = this.owner.pos;
+        //ゆらゆら
+        // if(this.waveHeight>0){
+        // const wy = Math.sin(this.time * this.waveYspeed) * this.waveHeight*game.delta;
+        // pos.y += wy;
+        // }
+
         pos.x += this.vx * game.delta;
         pos.y += this.vy * game.delta;
         this.vx *= this.vxc;
@@ -672,7 +678,7 @@ class Tsubu extends Mono {//パーティクル
             t.pos.set(x, y, 8, 8);
             t.pos.align = 1;
             t.pos.valign = 1;
-            t.move.set(Util.degToX(deg * i) * speed,Util.degToY(deg * i) * speed,c,c);
+            t.move.set(Util.degToX(deg * i) * speed, Util.degToY(deg * i) * speed, c, c);
             t.jumyo.lifeSpan = lifeSpan;
             t.jumyo.lifeStage = 0;
         }
@@ -815,10 +821,11 @@ class scoreData {//成績データ
     }
 }
 export const shared = {//共用変数
-    playData: {
+    playdata: {
         total: new scoreData(),
         before: new scoreData()
-    }
+    },
+    highscore: []
 }
 class Watch extends Mono {//デバッグ用変数表示
     constructor() {
@@ -873,6 +880,10 @@ class SceneTitle extends Mono {//タイトル画面
                     yield* new ScenePlay().stateDefault();
                     this.isExist = true;
                     break;
+                case text.highscore:
+                    this.isExist = false;
+                    yield* new SceneHighscore().stateDefault();
+                    this.isExist = true;
                 default:
                     this.titleMenu.isExist = false;
                     return;
@@ -898,7 +909,7 @@ class ScenePlay extends Mono {//プレイ画面
         //UI
         this.child.add(this.ui = new Mono(new Child()));
         this.ui.child.drawlayer = 'ui';
-        this.ui.child.add(this.textScore = new label(() => `SCORE ${shared.playData.total.score} KO ${shared.playData.total.ko}`, 2, 2));
+        this.ui.child.add(this.textScore = new label(() => `SCORE ${shared.playdata.total.score} KO ${shared.playdata.total.ko}`, 2, 2));
         this.ui.child.add(this.fpsView = new label(() => `FPS: ${game.fps}`, game.width - 2, 2));
         this.fpsView.pos.align = 2;
         //ボスのHPゲージ
@@ -941,10 +952,10 @@ class ScenePlay extends Mono {//プレイ画面
                 if (!bullet.collision.hit(target)) return;
                 bullet.remove();
                 target.color.flash('crimson');
-                shared.playData.total.score += target.unit.point;
+                shared.playdata.total.score += target.unit.point;
                 if (!target.unit.isBanish(1)) return;
                 this.effect.emittCircle(8, 300, 0.5, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
-                shared.playData.total.ko += target.unit.defeat();
+                shared.playdata.total.ko += target.unit.defeat();
             })
         }
         this.baddies.child.each((baddie) => {
@@ -957,7 +968,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
         this.elaps += game.delta;
-        shared.playData.total.time += game.delta;
+        shared.playdata.total.time += game.delta;
     }
     * stateDefault() {
         game.pushScene(this);
@@ -968,6 +979,7 @@ class ScenePlay extends Mono {//プレイ画面
                 continue;
             }
             if (this.isFailure) {
+                yield* this.showTelop('ゲームオーバー', 2);
                 switch (yield* new SceneGameOver().stateDefault()) {
                     case text.continue:
                         this.startGame();
@@ -1009,6 +1021,10 @@ class ScenePlay extends Mono {//プレイ画面
         // if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.2, 'greatcrow', this.baddiesbullets, this);
+        boss.move.waveYspeed = 360;
+        boss.move.waveHeight = 32;
+
+
         this.bossHPgauge.isExist = true;
         this.bossHPgauge.max = boss.unit.maxHp;
         this.bossHPgauge.watch = () => boss.unit.hp;
@@ -1019,16 +1035,16 @@ class ScenePlay extends Mono {//プレイ画面
         yield* this.showTelop('ステージクリア！', 2);
     }
     startGame() {
-        shared.playData.before = new scoreData();
+        shared.playdata.before = new scoreData();
         this.continueGame();
     }
     continueGame() {
-        shared.playData.total = new scoreData(shared.playData.before);
+        shared.playdata.total = new scoreData(shared.playdata.before);
         this.resetStage();
     }
     clearStage() {
-        shared.playData.total.stage++;
-        shared.playData.before = new scoreData(shared.playData.total);
+        shared.playdata.total.stage++;
+        shared.playdata.before = new scoreData(shared.playdata.total);
         this.resetStage();
     }
     resetStage() {
@@ -1041,6 +1057,13 @@ class ScenePlay extends Mono {//プレイ画面
         game.layers.get('effect').clearBlur();
         this.telop.isExist = false;
         this.bossHPgauge.remove?.();
+    }
+    checkScore() {
+        const current = shared.playdata.total;
+        for (const record of shared.highscore) {
+            if (record.score > current.score) continue;
+            break;
+        }
     }
 }
 class Unit {//キャラのステータス
@@ -1068,7 +1091,7 @@ class Unit {//キャラのステータス
 }
 class Player extends Mono {//プレイヤーキャラ
     constructor() {
-        super(new State(),new Move(), new Moji(), new Collision(), new Unit());
+        super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         this.unit.defeat = () => {
             this.isExist = false;
             return 0;
@@ -1081,7 +1104,7 @@ class Player extends Mono {//プレイヤーキャラ
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.setHp(1);
-        this.unit.invincible = true;//無敵
+        //this.unit.invincible = true;//無敵
 
     }
     maneuver() {
@@ -1129,7 +1152,7 @@ class Baddies extends Mono {//敵キャラ
     constructor() {
         super(new Child());
         this.routines = this.createRoutine();
-        for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Mono(new State(),new Move(),  new Moji(), new Collision(), new Unit()));
+        for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Mono(new State(), new Move(), new Moji(), new Collision(), new Unit()));
     }
     spawn(x, y, name, bullets, scene) {
         const data = datas.baddies[name];
@@ -1218,14 +1241,14 @@ class BulletBox extends Mono {//弾
     constructor() {
         super(new Child());
         this.child.drawlayer = 'effect';
-        this.child.addCreator('bullet', () => new Mono(new Guided(),new Move(), new Collision(), new Brush()));
+        this.child.addCreator('bullet', () => new Mono(new Guided(), new Move(), new Collision(), new Brush()));
     }
     firing(x, y, vx, vy, color) {
         const bullet = this.child.pool('bullet');
         bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
         bullet.pos.valign = 1;
-        bullet.move.set(vx,vy);
+        bullet.move.set(vx, vy);
         bullet.collision.set(6, 6);
         bullet.brush.circle();
         bullet.brush.color = color;
@@ -1287,6 +1310,23 @@ class SceneGameOver extends Mono {//ゲームオーバー画面
         const result = yield* this.menu.stateSelect();
         game.popScene();
         return result;
+    }
+}
+class SceneHighscore extends Mono {//ハイスコア画面
+    constructor() {
+        super(new Child());
+        this.child.drawlayer = 'ui';
+        this.child.add(new label(text.highscore, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+    }
+    *stateDefault() {
+        game.pushScene(this);
+        while (true) {
+            yield undefined;
+            if (!game.input.isPress('z')) continue;
+            break;
+        }
+        game.popScene();
+        return;
     }
 }
 export const game = new Game();
