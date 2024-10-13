@@ -348,6 +348,7 @@ class Pos {//座標コンポーネント
         this.set(0, 0, 0, 0);
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
+        this.parent = undefined;//座標リンクつける？
     }
     set(x, y, width, height) {
         this.x = x;
@@ -368,25 +369,18 @@ class Move {//動作コンポーネント
     reset() {
         this.set(0, 0);
         this.time = 0;
+        this.moveSet = undefined;
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
         this.vy = vy;
         this.vxc = vxc;
         this.vyc = vyc;
-        this.waveWidth = this.waveHeight = 0;
-        this.waveXspeed = this.waveYspeed = 0;
-        this.oniginX = this.originY = 0;
     }
     update() {
-        this.time = (this.time += game.delta) % 1;
+        this.time = (this.time += game.delta) % 360;
         const pos = this.owner.pos;
-        //ゆらゆら
-        // if(this.waveHeight>0){
-        // const wy = Math.sin(this.time * this.waveYspeed) * this.waveHeight*game.delta;
-        // pos.y += wy;
-        // }
-
+        this.moveSet?.update(this.time, pos, this);
         pos.x += this.vx * game.delta;
         pos.y += this.vy * game.delta;
         this.vx *= this.vxc;
@@ -843,7 +837,7 @@ class Watch extends Mono {//デバッグ用変数表示
     }
     add(watch) {
         const l = this.child.pool('label');
-        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.objs.length - 1) * l.moji.size * 1.5), font: 'Impact' })
+        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.objs.length - 1) * l.moji.size * 1.5) });
     }
 }
 class SceneTitle extends Mono {//タイトル画面
@@ -930,11 +924,8 @@ class ScenePlay extends Mono {//プレイ画面
         this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.telop.isExist = false;
 
-        // this.child.add(this.debug = new Watch());
-        // this.debug.pos.y = 40;
-        // this.debug.add(() => `ENEMY: ${this.baddies.child.liveCount}`);
-        // this.debug.add(() => `ENEMYBULLET: ${this.baddies.bullets.child.liveCount}`);
-
+        this.child.add(this.debug = new Watch());
+        this.debug.pos.y = 40;
         // this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
         // this.textScore.pos.x = 2;
         // this.textScore.pos.y = 48;
@@ -1039,15 +1030,19 @@ class ScenePlay extends Mono {//プレイ画面
         // }
         // if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
-        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.2, 'greatcrow', this.baddiesbullets, this);
-        boss.move.waveYspeed = 360;
-        boss.move.waveHeight = 32;
-
+        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.5, 'greatcrow', this.baddiesbullets, this);
 
         this.bossHPgauge.isExist = true;
         this.bossHPgauge.max = boss.unit.maxHp;
         this.bossHPgauge.watch = () => boss.unit.hp;
         this.ui.child.add(this.bossHPgauge);
+
+        this.debug.child.removeAll();
+        this.debug.add(() => `ボスタイム: ${boss.move.time}`);
+        this.debug.add(() => `ボスX座標: ${boss.pos.x}`);
+        this.debug.add(() => `ボスY座標: ${boss.pos.y}`);
+        this.debug.add(() => `: ${Math.sin(this.elaps * 3)}`);
+
         yield* waitForFrag(() => boss.unit.isDefeat);
         this.bossHPgauge.remove();
     }
@@ -1162,6 +1157,12 @@ class Player extends Mono {//プレイヤーキャラ
         ctx.fillRect(x + 31, y + 5, 10, 8);
     }
 }
+class moveSetTest {
+    constructor() { }
+    update(time, pos, move) {
+        pos.y = Math.sin(time * (Math.PI))*10;
+    }
+}
 class Baddies extends Mono {//敵キャラ
     constructor() {
         super(new Child());
@@ -1176,6 +1177,7 @@ class Baddies extends Mono {//敵キャラ
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.setHp(data.hp);
         baddie.unit.point = data.point;
+        baddie.move.moveSet = new moveSetTest();
         return baddie;
     }
     createRoutine() {
@@ -1360,8 +1362,8 @@ class SceneGameOver extends Mono {//ゲームオーバー画面
 class SceneHighscore extends Mono {//ハイスコア画面
     constructor(newRecord) {
         super(new Child());
-        this.child.drawlayer = 'ui';        
-        if(newRecord)this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
+        this.child.drawlayer = 'ui';
+        if (newRecord) this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
         this.child.add(new Label(text.highscore, game.width * 0.5, game.height * 0.15, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         const x = game.width * 0.2;
         const y = game.height * 0.25;
