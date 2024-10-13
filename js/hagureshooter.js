@@ -437,12 +437,16 @@ class Child {//コンテナコンポーネント
     static grave = [];
     static clean() {
         if (Child.grave.length === 0) return;
-        for (const obj of Child.grave) obj.parent.child.objs.splice(obj.childIndex);
+        for (const obj of Child.grave) {
+            if (obj.childIndex >= Child.grave.length) continue;
+            obj.parent.child.objs.splice(obj.childIndex);
+        }
         Child.grave = [];
     }
     constructor() {
         this.creator = {};
         this.objs = [];
+        this.count = 0;
         this.reserves = {};
         this.liveCount = 0;
         this.drawlayer = '';
@@ -475,14 +479,14 @@ class Child {//コンテナコンポーネント
         obj.childIndex = this.objs.length;
         obj.parent = this.owner;
         obj.remove = () => {
-            if (!obj.isExist) return;
+            if (!obj.isExist || obj.childIndex >= this.objs.length) return;
             obj.isExist = false;
             Child.grave.push(obj);
         }
         this.objs.push(obj);
     }
     pop() {
-        this.objs.pop().remove();
+        this.objs.pop()
     }
     removeAll() {
         for (const obj of this.objs) obj.remove();
@@ -596,7 +600,7 @@ class Moji {//文字表示コンポーネント
         ctx.fillText(this.getText, this.owner.pos.getScreenX(), this.owner.pos.getScreenY());
     }
 }
-class label extends Mono {//文字表示
+class Label extends Mono {//文字表示
     constructor(text, x, y, { size = cfg.fontSize.normal, color = cfg.theme.text, font = cfg.font.default.name, weight = 'normal', align = 0, valign = 0 } = {}) {
         super(new Moji());
         this.moji.set(text, { x, y, size, color, font, weight, align, valign });
@@ -695,12 +699,12 @@ class Menu extends Mono {//メニュー
         this.color = color;
         this.highlite = highlite;
         this.isEnableCancel = true;
-        this.child.add(this.curL = new label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, align: 2, valign: 1 }));
-        this.child.add(this.curR = new label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, valign: 1 }));
+        this.child.add(this.curL = new Label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, align: 2, valign: 1 }));
+        this.child.add(this.curR = new Label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, valign: 1 }));
         this.indexOffset = this.child.objs.length;
     }
     add(text) {
-        this.child.add(new label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }))
+        this.child.add(new Label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }))
     }
     *stateSelect(newIndex = this.index) {
         const length = this.child.objs.length - this.indexOffset;
@@ -760,6 +764,7 @@ let text = {//ゲームのテキスト
     explanation2: 'Z 決定、攻撃　X 取消、中断',
     start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
     pause: 'ポーズ', resume: 'ゲームを続ける', restart: '最初からやり直す', returntitle: 'タイトルに戻る',
+    stageclear: 'ステージ　クリアー', total: '合計', stage: 'ステージ', time: 'タイム', point: 'スコア', ko: '撃破数',
     gameover: 'ゲームオーバー', continue: 'コンティニュー'
 }
 const EMOJI = {//Font Awesomeの絵文字のUnicode
@@ -769,7 +774,8 @@ const EMOJI = {//Font Awesomeの絵文字のUnicode
     HOUSE: 'e00d',
     TREE: 'f1bb',
     DOVE: 'f4ba',
-    POO: 'f2fe'
+    POO: 'f2fe',
+    CROWN: 'f521'
 }
 Object.freeze(EMOJI);
 class BaddieData {//敵キャラデータ
@@ -794,8 +800,10 @@ export const datas = {//ゲームデータ
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
+    },
+    game: {
+        highscoreListMax: 10
     }
-
 };
 // class SpawnData {
 //     constructor(time, x, y, name) {
@@ -816,22 +824,22 @@ class scoreData {//成績データ
     constructor(from) {
         this.stage = from?.stage || 0;
         this.time = from?.time || 0;
-        this.score = from?.score || 0;
+        this.point = from?.point || 0;
         this.ko = from?.ko || 0;
     }
 }
 export const shared = {//共用変数
     playdata: {
         total: new scoreData(),
-        before: new scoreData()
+        backup: new scoreData()
     },
-    highscore: []
+    highscores: []
 }
 class Watch extends Mono {//デバッグ用変数表示
     constructor() {
         super(new Pos(), new Child());
         this.child.drawlayer = 'ui';
-        this.child.addCreator('label', () => new label());
+        this.child.addCreator('label', () => new Label());
     }
     add(watch) {
         const l = this.child.pool('label');
@@ -843,10 +851,10 @@ class SceneTitle extends Mono {//タイトル画面
         super(new Child());
         //タイトル
         const titleY = game.height * 0.25;
-        this.child.add(new label(text.title, game.width * 0.5, titleY, { size: cfg.fontSize.large, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.child.add(new label(text.title2, game.width * 0.5, titleY + cfg.fontSize.large * 1.5, { size: cfg.fontSize.large, align: 1, valign: 1 }));
+        this.child.add(new Label(text.title, game.width * 0.5, titleY, { size: cfg.fontSize.large, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.add(new Label(text.title2, game.width * 0.5, titleY + cfg.fontSize.large * 1.5, { size: cfg.fontSize.large, align: 1, valign: 1 }));
         //ボタンを押して表示
-        this.child.add(this.presskey = new label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
+        this.child.add(this.presskey = new Label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
         this.presskey.color.blink(0.5);
         //メニュー
         this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
@@ -884,6 +892,7 @@ class SceneTitle extends Mono {//タイトル画面
                     this.isExist = false;
                     yield* new SceneHighscore().stateDefault();
                     this.isExist = true;
+                    break;
                 default:
                     this.titleMenu.isExist = false;
                     return;
@@ -909,8 +918,8 @@ class ScenePlay extends Mono {//プレイ画面
         //UI
         this.child.add(this.ui = new Mono(new Child()));
         this.ui.child.drawlayer = 'ui';
-        this.ui.child.add(this.textScore = new label(() => `SCORE ${shared.playdata.total.score} KO ${shared.playdata.total.ko}`, 2, 2));
-        this.ui.child.add(this.fpsView = new label(() => `FPS: ${game.fps}`, game.width - 2, 2));
+        this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
+        this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2));
         this.fpsView.pos.align = 2;
         //ボスのHPゲージ
         const gauge = this.bossHPgauge = new Gauge();
@@ -918,7 +927,7 @@ class ScenePlay extends Mono {//プレイ画面
         gauge.pos.align = 1;
         gauge.color = cfg.theme.text;
         //テロップ
-        this.ui.child.add(this.telop = new label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.telop.isExist = false;
 
         // this.child.add(this.debug = new Watch());
@@ -931,7 +940,7 @@ class ScenePlay extends Mono {//プレイ画面
         // this.textScore.pos.y = 48;
 
         // this.fiber.add(this.stageRunner(con.stages[0]));      
-        this.startGame();
+        this.newGame();
     }
     get isClear() { return !this.state.isEnable('stage'); }
     get isFailure() { return this.player.unit.isDefeat }
@@ -941,6 +950,9 @@ class ScenePlay extends Mono {//プレイ画面
         this.telop.isExist = true;
         yield* waitForTime(time);
         this.telop.isExist = false;
+    }
+    update() {
+        this.player.maneuver();
     }
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
@@ -952,8 +964,9 @@ class ScenePlay extends Mono {//プレイ画面
                 if (!bullet.collision.hit(target)) return;
                 bullet.remove();
                 target.color.flash('crimson');
-                shared.playdata.total.score += target.unit.point;
+                shared.playdata.total.point += 100;
                 if (!target.unit.isBanish(1)) return;
+                shared.playdata.total.point += target.unit.point;
                 this.effect.emittCircle(8, 300, 0.5, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
                 shared.playdata.total.ko += target.unit.defeat();
             })
@@ -975,33 +988,39 @@ class ScenePlay extends Mono {//プレイ画面
         while (true) {
             yield undefined;
             if (this.isClear) {
-                this.clearStage();
+                yield* this.showTelop(text.stageclear, 2);
+                shared.playdata.total.stage++;
+                yield* new SceneClear().stateDefault();
+                shared.playdata.backup = new scoreData(shared.playdata.total);
+                this.resetStage();
                 continue;
-            }
-            if (this.isFailure) {
-                yield* this.showTelop('ゲームオーバー', 2);
-                switch (yield* new SceneGameOver().stateDefault()) {
-                    case text.continue:
-                        this.startGame();
-                        break;
-                    case text.returntitle:
-                        game.popScene();
-                        return;
-                }
             }
             if (game.input.isPress('x')) {
                 this.isActive = false;
                 switch (yield* new ScenePause().stateDefault()) {
                     case text.restart:
-                        this.startGame();
+                        this.continueGame();
                         break;
                     case text.returntitle:
                         game.popScene();
                         return;
                 }
                 this.isActive = true;
+                continue;
             }
-            this.player.maneuver();
+            if (this.isFailure) {
+                yield* this.showTelop(text.gameover, 2);
+                if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
+                switch (yield* new SceneGameOver().stateDefault()) {
+                    case text.continue:
+                        this.newGame();
+                        break;
+                    case text.returntitle:
+                        game.popScene();
+                        return;
+                }
+                continue;
+            }
         }
     }
     * stageDefault() {
@@ -1031,24 +1050,19 @@ class ScenePlay extends Mono {//プレイ画面
         this.ui.child.add(this.bossHPgauge);
         yield* waitForFrag(() => boss.unit.isDefeat);
         this.bossHPgauge.remove();
-        this.player.unit.invincible = true;
-        yield* this.showTelop('ステージクリア！', 2);
     }
-    startGame() {
-        shared.playdata.before = new scoreData();
-        this.continueGame();
-    }
-    continueGame() {
-        shared.playdata.total = new scoreData(shared.playdata.before);
+    newGame() {
+        shared.playdata.backup = new scoreData();
+        shared.playdata.total = new scoreData();
         this.resetStage();
     }
-    clearStage() {
-        shared.playdata.total.stage++;
-        shared.playdata.before = new scoreData(shared.playdata.total);
+    continueGame() {
+        shared.playdata.total = new scoreData(shared.playdata.backup);
         this.resetStage();
     }
     resetStage() {
         this.player.reset(this.playerbullets, this);
+        this.player.unit.invincible = true;//無敵
         this.playerbullets.child.removeAll();
         this.baddies.child.removeAll();
         this.baddiesbullets.child.removeAll();
@@ -1058,12 +1072,11 @@ class ScenePlay extends Mono {//プレイ画面
         this.telop.isExist = false;
         this.bossHPgauge.remove?.();
     }
-    checkScore() {
-        const current = shared.playdata.total;
-        for (const record of shared.highscore) {
-            if (record.score > current.score) continue;
-            break;
-        }
+    isNewRecord() {
+        shared.highscores.push(shared.playdata.total);
+        shared.highscores.sort((a, b) => b.point - a.point);
+        if (shared.highscores.length < datas.game.highscoreListMax) return true;
+        return shared.playdata.total != shared.highscores.pop();
     }
 }
 class Unit {//キャラのステータス
@@ -1108,6 +1121,7 @@ class Player extends Mono {//プレイヤーキャラ
 
     }
     maneuver() {
+        if (!this.isExist) return;
         this.move.vx = this.move.vy = 0;
         if (game.input.isDown('left')) this.move.vx = -datas.player.moveSpeed;
         if (game.input.isDown('right')) this.move.vx = datas.player.moveSpeed;
@@ -1280,7 +1294,7 @@ class ScenePause extends Mono {//中断メニュー画面
         super(new Child());
         this.child.drawlayer = 'ui';
         this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
-        this.child.add(new label(text.pause, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.add(new Label(text.pause, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
         this.menu.add(text.resume);
         this.menu.add(text.restart);
@@ -1295,11 +1309,42 @@ class ScenePause extends Mono {//中断メニュー画面
         return result;
     }
 }
+class SceneClear extends Mono {//ステージクリア画面
+    constructor() {
+        super(new Child());
+        this.child.drawlayer = 'ui';
+        this.child.add(new Label(text.stageclear, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        let x = game.width * 0.4;
+        const y = game.height * 0.4;
+        const line = cfg.fontSize.medium * 1.5;
+        const before = shared.playdata.backup;
+        const total = shared.playdata.total;
+        this.child.add(new Label(text.stage, x, y, { align: 2, valign: 1 }));
+        this.child.add(new Label(text.time, x, y + line, { align: 2, valign: 1 }));
+        this.child.add(new Label(text.point, x, y + (line * 2), { align: 2, valign: 1 }));
+        this.child.add(new Label(text.ko, x, y + (line * 3), { align: 2, valign: 1 }));
+        x = game.width * 0.8;
+        this.child.add(new Label(total.stage, x, y, { align: 2, valign: 1 }));
+        this.child.add(new Label(Math.floor(total.time - before.time), x, y + line, { align: 2, valign: 1 }));
+        this.child.add(new Label(total.point - before.point, x, y + (line * 2), { align: 2, valign: 1 }));
+        this.child.add(new Label(total.ko - before.ko, x, y + (line * 3), { align: 2, valign: 1 }));
+    }
+    *stateDefault() {
+        game.pushScene(this);
+        while (true) {
+            yield undefined;
+            if (game.input.isPress('x')) break;
+        }
+        game.popScene();
+        return;
+    }
+}
 class SceneGameOver extends Mono {//ゲームオーバー画面
     constructor() {
         super(new Child());
         this.child.drawlayer = 'ui';
-        this.child.add(new label(text.gameover, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
+        this.child.add(new Label(text.gameover, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
         this.menu.isEnableCancel = false;
         this.menu.add(text.continue);
@@ -1313,17 +1358,28 @@ class SceneGameOver extends Mono {//ゲームオーバー画面
     }
 }
 class SceneHighscore extends Mono {//ハイスコア画面
-    constructor() {
+    constructor(newRecord) {
         super(new Child());
-        this.child.drawlayer = 'ui';
-        this.child.add(new label(text.highscore, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.drawlayer = 'ui';        
+        if(newRecord)this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
+        this.child.add(new Label(text.highscore, game.width * 0.5, game.height * 0.15, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        const x = game.width * 0.2;
+        const y = game.height * 0.25;
+        for (let i = 0; i < shared.highscores.length; i++) {
+            const score = shared.highscores[i];
+            const label = new Label(`${(i + 1).toString().padStart(2, ' ')}:${score.point}`, x, y + i * (cfg.fontSize.medium * 1.25), { valign: 1 });
+            if (score === newRecord) {
+                label.color.value = cfg.theme.highlite;
+                label.color.blink(0.5);
+            }
+            this.child.add(label);
+        }
     }
     *stateDefault() {
         game.pushScene(this);
         while (true) {
             yield undefined;
-            if (!game.input.isPress('z')) continue;
-            break;
+            if (game.input.isPress('z') || game.input.isPress('x')) break;
         }
         game.popScene();
         return;
