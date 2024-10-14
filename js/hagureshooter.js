@@ -236,6 +236,7 @@ class Util {//便利メソッド詰め合わせ
     }
     static xRotaRad = (x, y, rad) => Math.cos(rad) * x - Math.sin(rad) * y;
     static yRotaRad = (x, y, rad) => Math.sin(rad) * x + Math.cos(rad) * y;
+    static distanse = (x, y, x2, y2) => Math.sqrt(Math.pow((x - x2), 2) + Math.pow((y - y2), 2));
     static dot = (x, y, x2, y2) => x * x2 + y * y2;
     static cross = (x, y, x2, y2) => x * y2 - y * x2;
     static lerp = (start, end, t) => (1 - t) * start + t * end;
@@ -368,8 +369,10 @@ class Move {//動作コンポーネント
     }
     reset() {
         this.set(0, 0);
-        this.time = 0;
-        this.moveSet = undefined;
+        this.ox = this.oy = this.rotateSpeed = this.bvx = this.bvy = this.time = this.elaps = 0
+        this.ease;
+        this.isPerpetual = false;
+        this.vias = 1;
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
@@ -377,14 +380,43 @@ class Move {//動作コンポーネント
         this.vxc = vxc;
         this.vyc = vyc;
     }
+    setRotate(x, y, speed) {
+        this.ox = x;
+        this.oy = y;
+        this.rotateSpeed = speed;
+    }
+    setEase(x, y, time, { isPerpetual = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
+        this.vx = x;
+        this.vy = y;
+        this.time = time;
+        this.elaps = 0;
+        this.vias = vias;
+        this.isPerpetual = isPerpetual;
+        this.ease = ease
+    }
     update() {
-        this.time = (this.time += game.delta) % 360;
         const pos = this.owner.pos;
-        this.moveSet?.update(this.time, pos, this);
-        pos.x += this.vx * game.delta;
-        pos.y += this.vy * game.delta;
-        this.vx *= this.vxc;
-        this.vy *= this.vyc;
+        if (this.time > 0) {
+            this.elaps = (this.elaps += game.delta);
+            const ease = this.ease((this.elaps / this.time) * this.vias);
+            const x = this.vx * ease;
+            const y = this.vy * ease;
+            pos.x += x - this.bvx;
+            pos.y += y - this.bvy;
+            this.bvx = x;
+            this.bvy = y;
+            if (this.isPerpetual && this.elaps >= this.time) this.elaps = 0;
+        } else {
+            if (this.rotateSpeed !== 0) {
+
+            } else {
+                pos.x += this.vx * game.delta;
+                pos.y += this.vy * game.delta;
+                this.vx *= this.vxc;
+                this.vy *= this.vyc;
+            }
+
+        }
     }
 }
 class Guided {//ホーミングコンポーネント
@@ -837,7 +869,7 @@ class Watch extends Mono {//デバッグ用変数表示
     }
     add(watch) {
         const l = this.child.pool('label');
-        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.objs.length - 1) * l.moji.size * 1.5) });
+        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5) });
     }
 }
 class SceneTitle extends Mono {//タイトル画面
@@ -1029,8 +1061,9 @@ class ScenePlay extends Mono {//プレイ画面
         //     this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
         // }
         // if (this.isFailure) return;
-        yield* this.showTelop('WARNING!', 2, 0.25);
+        // yield* this.showTelop('WARNING!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.5, 'greatcrow', this.baddiesbullets, this);
+        boss.move.setMove(0, 10, 1, { vias: 2 });
 
         this.bossHPgauge.isExist = true;
         this.bossHPgauge.max = boss.unit.maxHp;
@@ -1041,7 +1074,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.debug.add(() => `ボスタイム: ${boss.move.time}`);
         this.debug.add(() => `ボスX座標: ${boss.pos.x}`);
         this.debug.add(() => `ボスY座標: ${boss.pos.y}`);
-        this.debug.add(() => `: ${Math.sin(this.elaps * 3)}`);
+        this.debug.add(() => `: ${-Math.sin(this.elaps * Math.PI)}`);
 
         yield* waitForFrag(() => boss.unit.isDefeat);
         this.bossHPgauge.remove();
@@ -1157,12 +1190,6 @@ class Player extends Mono {//プレイヤーキャラ
         ctx.fillRect(x + 31, y + 5, 10, 8);
     }
 }
-class moveSetTest {
-    constructor() { }
-    update(time, pos, move) {
-        pos.y = Math.sin(time * (Math.PI))*10;
-    }
-}
 class Baddies extends Mono {//敵キャラ
     constructor() {
         super(new Child());
@@ -1177,7 +1204,6 @@ class Baddies extends Mono {//敵キャラ
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.setHp(data.hp);
         baddie.unit.point = data.point;
-        baddie.move.moveSet = new moveSetTest();
         return baddie;
     }
     createRoutine() {
