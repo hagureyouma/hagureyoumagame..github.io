@@ -369,10 +369,9 @@ class Move {//動作コンポーネント
     }
     reset() {
         this.set(0, 0);
-        this.ox = this.oy = this.rotateSpeed = this.bvx = this.bvy = this.time = this.elaps = 0
+        this.ox = this.oy = this.rotate = this.vias = this.ex = this.ev = this.bvx = this.bvy = this.time = this.elaps = 0
         this.ease;
         this.isPerpetual = false;
-        this.vias = 1;
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
@@ -383,11 +382,11 @@ class Move {//動作コンポーネント
     setRotate(x, y, speed) {
         this.ox = x;
         this.oy = y;
-        this.rotateSpeed = speed;
+        this.rotate = speed;
     }
     setEase(x, y, time, { isPerpetual = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
-        this.vx = x;
-        this.vy = y;
+        this.ex = x;
+        this.ey = y;
         this.time = time;
         this.elaps = 0;
         this.vias = vias;
@@ -397,18 +396,20 @@ class Move {//動作コンポーネント
     update() {
         const pos = this.owner.pos;
         if (this.time > 0) {
-            this.elaps = (this.elaps += game.delta);
-            const ease = this.ease((this.elaps / this.time) * this.vias);
-            const x = this.vx * ease;
-            const y = this.vy * ease;
+            this.elaps += game.delta;
+            const e = this.ease((this.elaps / this.time) * this.vias);
+            const x = this.ex * e;
+            const y = this.ey * e;
             pos.x += x - this.bvx;
             pos.y += y - this.bvy;
             this.bvx = x;
             this.bvy = y;
             if (this.isPerpetual && this.elaps >= this.time) this.elaps = 0;
         } else {
-            if (this.rotateSpeed !== 0) {
-
+            if (this.rotate !== 0) {
+                const r = (this.rotate * Util.radian) * game.delta;
+                pos.x = this.ox += Util.xRotaRad(pos.x - this.ox, pos.y - this.oy, r);
+                pos.y = this.oy += Util.yRotaRad(pos.x - this.ox, pos.y - this.oy, r);
             } else {
                 pos.x += this.vx * game.delta;
                 pos.y += this.vy * game.delta;
@@ -1063,7 +1064,8 @@ class ScenePlay extends Mono {//プレイ画面
         // if (this.isFailure) return;
         // yield* this.showTelop('WARNING!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.5, 'greatcrow', this.baddiesbullets, this);
-        boss.move.setMove(0, 10, 1, { vias: 2 });
+        //boss.move.setEase(0, 10, 1, { vias: 2 });
+        boss.move.setRotate(200,200,100);
 
         this.bossHPgauge.isExist = true;
         this.bossHPgauge.max = boss.unit.maxHp;
@@ -1071,9 +1073,9 @@ class ScenePlay extends Mono {//プレイ画面
         this.ui.child.add(this.bossHPgauge);
 
         this.debug.child.removeAll();
-        this.debug.add(() => `ボスタイム: ${boss.move.time}`);
-        this.debug.add(() => `ボスX座標: ${boss.pos.x}`);
-        this.debug.add(() => `ボスY座標: ${boss.pos.y}`);
+        this.debug.add(() => `タイム: ${boss.move.time}`);
+        this.debug.add(() => `X座標: ${boss.pos.x}`);
+        this.debug.add(() => `Y座標: ${boss.pos.y}`);
         this.debug.add(() => `: ${-Math.sin(this.elaps * Math.PI)}`);
 
         yield* waitForFrag(() => boss.unit.isDefeat);
