@@ -371,7 +371,7 @@ class Move {//動作コンポーネント
         this.set(0, 0);
         this.ox = this.oy = this.revo = this.vias = this.ex = this.ev = this.bvx = this.bvy = this.time = this.elaps = 0
         this.ease;
-        this.isPerpetual = false;
+        this.isRepeat = false;
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
@@ -384,41 +384,45 @@ class Move {//動作コンポーネント
         this.oy = y;
         this.revo = speed;
     }
-    setEase(x, y, time, { isPerpetual = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
+    setEase(x, y, time, { isRepeat = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
         this.ex = x;
         this.ey = y;
         this.time = time;
         this.elaps = 0;
+        this.isRepeat = isRepeat;
         this.vias = vias;
-        this.isPerpetual = isPerpetual;
         this.ease = ease
     }
     update() {
         const pos = this.owner.pos;
         if (this.time > 0) {
-            this.elaps += game.delta;
-            const e = this.ease((this.elaps / this.time) * this.vias);
+            const e = this.ease((this.elaps += game.delta / this.time) * this.vias);
             const x = this.ex * e;
             const y = this.ey * e;
             pos.x += x - this.bvx;
             pos.y += y - this.bvy;
             this.bvx = x;
             this.bvy = y;
-            if (this.isPerpetual && this.elaps >= this.time) this.elaps = 0;
-        } else {
-            if (this.revo !== 0) {
-                const r = (this.revo * game.delta) * Util.radian;
-                const rx = pos.x - this.ox;
-                const ry = pos.y - this.oy;
-                pos.x = this.ox + Util.xRotaRad(rx, ry, r);
-                pos.y = this.oy + Util.yRotaRad(rx, ry, r);
-            } else {
-                pos.x += this.vx * game.delta;
-                pos.y += this.vy * game.delta;
-                this.vx *= this.vxc;
-                this.vy *= this.vyc;
+            if (this.elaps >= this.time) {
+                if (this.isRepeat) {
+                    this.elaps = 0;
+                }
+                else {
+                    this.time = 0;
+                }
             }
-
+        }
+        if (this.revo !== 0) {
+            const r = (this.revo * game.delta) * Util.radian;
+            const rx = pos.x - this.ox;
+            const ry = pos.y - this.oy;
+            pos.x = this.ox + Util.xRotaRad(rx, ry, r);
+            pos.y = this.oy + Util.yRotaRad(rx, ry, r);
+        } else {
+            pos.x += this.vx * game.delta;
+            pos.y += this.vy * game.delta;
+            this.vx *= this.vxc;
+            this.vy *= this.vyc;
         }
     }
 }
@@ -475,7 +479,6 @@ class Child {//コンテナコンポーネント
     constructor() {
         this.creator = {};
         this.objs = [];
-        this.count = 0;
         this.reserves = {};
         this.liveCount = 0;
         this.drawlayer = '';
@@ -1055,16 +1058,16 @@ class ScenePlay extends Mono {//プレイ画面
         let maxSpawn = 10;
         let spawnInterval = 1;
         const baddies = ['crow', 'dove'];
-        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     yield* waitForTime(spawnInterval);
-        //     this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
-        // }
-        // if (this.isFailure) return;
-        // yield* this.showTelop('WARNING!', 2, 0.25);
+        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+            if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
+                yield undefined;
+                continue;
+            }
+            yield* waitForTime(spawnInterval);
+            this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
+        }
+        if (this.isFailure) return;
+        yield* this.showTelop('WARNING!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.5, 'greatcrow', this.baddiesbullets, this);
         //boss.move.setEase(0, 10, 1, { vias: 2 });
         boss.move.setRevo(200, 200, 200);
@@ -1198,7 +1201,8 @@ class Baddies extends Mono {//敵キャラ
     constructor() {
         super(new Child());
         this.routines = this.createRoutine();
-        for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Mono(new State(), new Move(), new Moji(), new Collision(), new Unit()));
+        const creator = () => new Mono(new State(), new Move(), new Moji(), new Collision(), new Unit());
+        for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, creator);
     }
     spawn(x, y, name, bullets, scene) {
         const data = datas.baddies[name];
