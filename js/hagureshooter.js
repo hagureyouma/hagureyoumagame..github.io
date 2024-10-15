@@ -369,7 +369,7 @@ class Move {//動作コンポーネント
     }
     reset() {
         this.set(0, 0);
-        this.ox = this.oy = this.rotate = this.vias = this.ex = this.ev = this.bvx = this.bvy = this.time = this.elaps = 0
+        this.ox = this.oy = this.revo = this.vias = this.ex = this.ev = this.bvx = this.bvy = this.time = this.elaps = 0
         this.ease;
         this.isPerpetual = false;
     }
@@ -379,10 +379,10 @@ class Move {//動作コンポーネント
         this.vxc = vxc;
         this.vyc = vyc;
     }
-    setRotate(x, y, speed) {
+    setRevo(x, y, speed) {
         this.ox = x;
         this.oy = y;
-        this.rotate = speed;
+        this.revo = speed;
     }
     setEase(x, y, time, { isPerpetual = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
         this.ex = x;
@@ -406,10 +406,12 @@ class Move {//動作コンポーネント
             this.bvy = y;
             if (this.isPerpetual && this.elaps >= this.time) this.elaps = 0;
         } else {
-            if (this.rotate !== 0) {
-                const r = (this.rotate * Util.radian) * game.delta;
-                pos.x = this.ox += Util.xRotaRad(pos.x - this.ox, pos.y - this.oy, r);
-                pos.y = this.oy += Util.yRotaRad(pos.x - this.ox, pos.y - this.oy, r);
+            if (this.revo !== 0) {
+                const r = (this.revo * game.delta) * Util.radian;
+                const rx = pos.x - this.ox;
+                const ry = pos.y - this.oy;
+                pos.x = this.ox + Util.xRotaRad(rx, ry, r);
+                pos.y = this.oy + Util.yRotaRad(rx, ry, r);
             } else {
                 pos.x += this.vx * game.delta;
                 pos.y += this.vy * game.delta;
@@ -999,7 +1001,7 @@ class ScenePlay extends Mono {//プレイ画面
             if (!baddie.unit.isEntry) {
                 if (!game.isOutOfRange(baddie.collision.rect)) baddie.unit.isEntry = true;
             } else {
-                if (game.isOutOfRange(baddie.collision.rect)) baddie.unit.defeat();
+                //if (game.isOutOfRange(baddie.collision.rect)) baddie.unit.defeat();
             }
         });
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
@@ -1065,7 +1067,7 @@ class ScenePlay extends Mono {//プレイ画面
         // yield* this.showTelop('WARNING!', 2, 0.25);
         const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.5, 'greatcrow', this.baddiesbullets, this);
         //boss.move.setEase(0, 10, 1, { vias: 2 });
-        boss.move.setRotate(200,200,100);
+        boss.move.setRevo(200, 200, 200);
 
         this.bossHPgauge.isExist = true;
         this.bossHPgauge.max = boss.unit.maxHp;
