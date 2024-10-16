@@ -17,7 +17,6 @@
 }
 'use strict';
 console.clear();
-
 class Game {//ゲーム本体
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
@@ -260,9 +259,9 @@ class Rect {//矩形
     isIntersect = (rect) => rect.x + rect.width > this.x && this.x + this.width > rect.x && rect.y + rect.height > this.y && this.y + this.height > rect.y;
 }
 class Mono {//ゲームオブジェクト
-    constructor(...args) {        
+    constructor(...args) {
         this.isExist = this.isActive = true;
-        this.isRemoved=false;
+        this.isRemoved = false;
         this.mixs = [];
         this.childIndex = -1;
         this.remove;
@@ -347,6 +346,7 @@ class Pos {//座標コンポーネント
     }
     reset() {
         this.set(0, 0, 0, 0);
+        this.setOrigin(0, 0);
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
         this.parent = undefined;//座標リンクつける？
@@ -357,6 +357,17 @@ class Pos {//座標コンポーネント
         this.width = width;
         this.height = height;
         return this;
+    }
+    setOrigin(x, y) {
+        this.originX = x;
+        this.originY = y;
+    }
+    setRevo(deg) {
+        const r = revo * Util.radian;
+        const rx = this.x - this.originX;
+        const ry = this.y - this.originY;
+        this.x = this.originX + Util.xRotaRad(rx, ry, r);
+        this.y = this.originY + Util.yRotaRad(rx, ry, r);
     }
     getScreenX = () => Math.floor(this.x - this.align * this.width * 0.5);
     getScreenY = () => Math.floor(this.y - this.valign * this.height * 0.5);
@@ -369,9 +380,8 @@ class Move {//動作コンポーネント
     }
     reset() {
         this.set(0, 0);
-        this.ox = this.oy = this.revo = this.vias = this.ex = this.ev = this.bvx = this.bvy = this.time = this.elaps = 0
-        this.ease;
-        this.isRepeat = false;
+        this.setEase(0, 0, 0);
+        this.revo;
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
@@ -379,14 +389,11 @@ class Move {//動作コンポーネント
         this.vxc = vxc;
         this.vyc = vyc;
     }
-    setRevo(x, y, speed) {
-        this.ox = x;
-        this.oy = y;
-        this.revo = speed;
-    }
     setEase(x, y, time, { isRepeat = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
         this.ex = x;
         this.ey = y;
+        this.bvx = 0;
+        this.bvy = 0;
         this.time = time;
         this.elaps = 0;
         this.isRepeat = isRepeat;
@@ -397,12 +404,8 @@ class Move {//動作コンポーネント
         const pos = this.owner.pos;
         if (this.time > 0) {
             if (this.elaps >= this.time) {
-                if (this.isRepeat) {
-                    this.elaps = 0;
-                }
-                else {
-                    this.time = 0;
-                }
+                this.elaps = 0;
+                if (!this.isRepeat) this.time = 0;
             }
             const e = this.ease((this.elaps += game.delta / this.time) * this.vias);
             const x = this.ex * e;
@@ -412,18 +415,11 @@ class Move {//動作コンポーネント
             this.bvx = x;
             this.bvy = y;
         }
-        if (this.revo !== 0) {
-            const r = (this.revo * game.delta) * Util.radian;
-            const rx = pos.x - this.ox;
-            const ry = pos.y - this.oy;
-            pos.x = this.ox + Util.xRotaRad(rx, ry, r);
-            pos.y = this.oy + Util.yRotaRad(rx, ry, r);
-        } else {
-            pos.x += this.vx * game.delta;
-            pos.y += this.vy * game.delta;
-            this.vx *= this.vxc;
-            this.vy *= this.vyc;
-        }
+        if (this.revo !== 0) pos.setRevo(this.revo * game.delta);
+        pos.x += this.vx * game.delta;
+        pos.y += this.vy * game.delta;
+        this.vx *= this.vxc;
+        this.vy *= this.vyc;
     }
 }
 class Guided {//ホーミングコンポーネント
@@ -471,7 +467,7 @@ class Child {//コンテナコンポーネント
     static clean() {
         if (Child.grave.size === 0) return;
         for (const child of Child.grave) {
-            child.objs=child.objs.filter((obj)=>!obj.isRemoved);
+            child.objs = child.objs.filter((obj) => !obj.isRemoved);
         }
         Child.grave.clear();
     }
@@ -509,8 +505,8 @@ class Child {//コンテナコンポーネント
         obj.remove = () => {
             if (!obj.isExist) return;
             obj.isExist = false;
-            obj.isRemoved=true;
-            Child.grave.add(this);            
+            obj.isRemoved = true;
+            Child.grave.add(this);
         }
         this.objs.push(obj);
     }
@@ -1019,19 +1015,6 @@ class ScenePlay extends Mono {//プレイ画面
                 this.resetStage();
                 continue;
             }
-            if (game.input.isPress('x')) {
-                this.isActive = false;
-                switch (yield* new ScenePause().stateDefault()) {
-                    case text.restart:
-                        this.continueGame();
-                        break;
-                    case text.returntitle:
-                        game.popScene();
-                        return;
-                }
-                this.isActive = true;
-                continue;
-            }
             if (this.isFailure) {
                 yield* this.showTelop(text.gameover, 2);
                 if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
@@ -1043,6 +1026,19 @@ class ScenePlay extends Mono {//プレイ画面
                         game.popScene();
                         return;
                 }
+                continue;
+            }
+            if (game.input.isPress('x')) {
+                this.isActive = false;
+                switch (yield* new ScenePause().stateDefault()) {
+                    case text.restart:
+                        this.continueGame();
+                        break;
+                    case text.returntitle:
+                        game.popScene();
+                        return;
+                }
+                this.isActive = true;
                 continue;
             }
         }
