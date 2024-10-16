@@ -260,10 +260,10 @@ class Rect {//矩形
     isIntersect = (rect) => rect.x + rect.width > this.x && this.x + this.width > rect.x && rect.y + rect.height > this.y && this.y + this.height > rect.y;
 }
 class Mono {//ゲームオブジェクト
-    constructor(...args) {
+    constructor(...args) {        
         this.isExist = this.isActive = true;
+        this.isRemoved=false;
         this.mixs = [];
-        this.parent;
         this.childIndex = -1;
         this.remove;
         for (const arg of args) {
@@ -396,13 +396,6 @@ class Move {//動作コンポーネント
     update() {
         const pos = this.owner.pos;
         if (this.time > 0) {
-            const e = this.ease((this.elaps += game.delta / this.time) * this.vias);
-            const x = this.ex * e;
-            const y = this.ey * e;
-            pos.x += x - this.bvx;
-            pos.y += y - this.bvy;
-            this.bvx = x;
-            this.bvy = y;
             if (this.elaps >= this.time) {
                 if (this.isRepeat) {
                     this.elaps = 0;
@@ -411,6 +404,13 @@ class Move {//動作コンポーネント
                     this.time = 0;
                 }
             }
+            const e = this.ease((this.elaps += game.delta / this.time) * this.vias);
+            const x = this.ex * e;
+            const y = this.ey * e;
+            pos.x += x - this.bvx;
+            pos.y += y - this.bvy;
+            this.bvx = x;
+            this.bvy = y;
         }
         if (this.revo !== 0) {
             const r = (this.revo * game.delta) * Util.radian;
@@ -467,14 +467,13 @@ class Collision {//当たり判定コンポーネント
     }
 }
 class Child {//コンテナコンポーネント
-    static grave = [];
+    static grave = new Set();
     static clean() {
-        if (Child.grave.length === 0) return;
-        for (const obj of Child.grave) {
-            if (obj.childIndex >= Child.grave.length) continue;
-            obj.parent.child.objs.splice(obj.childIndex);
+        if (Child.grave.size === 0) return;
+        for (const child of Child.grave) {
+            child.objs=child.objs.filter((obj)=>!obj.isRemoved);
         }
-        Child.grave = [];
+        Child.grave.clear();
     }
     constructor() {
         this.creator = {};
@@ -491,7 +490,6 @@ class Child {//コンテナコンポーネント
         if (this.reserves[name].length === 0) {
             obj = this.creator[name]();
             obj.childIndex = this.objs.length;
-            obj.parent = this.owner;
             obj.remove = () => {
                 if (!obj.isExist) return;
                 obj.isExist = false;
@@ -508,12 +506,11 @@ class Child {//コンテナコンポーネント
         return obj;
     }
     add(obj) {
-        obj.childIndex = this.objs.length;
-        obj.parent = this.owner;
         obj.remove = () => {
-            if (!obj.isExist || obj.childIndex >= this.objs.length) return;
+            if (!obj.isExist) return;
             obj.isExist = false;
-            Child.grave.push(obj);
+            obj.isRemoved=true;
+            Child.grave.add(this);            
         }
         this.objs.push(obj);
     }
@@ -938,9 +935,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.elaps = 0;
         //プレイヤー
         this.child.add(this.playerside = new Mono(new Child()));
-        this.playerside.child.add(this.player = new Player());
         this.child.add(this.playerbullets = new BulletBox());
-        this.player.reset(this.playerbullets, this);
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
         this.child.add(this.baddiesbullets = new BulletBox());
@@ -1004,7 +999,7 @@ class ScenePlay extends Mono {//プレイ画面
             if (!baddie.unit.isEntry) {
                 if (!game.isOutOfRange(baddie.collision.rect)) baddie.unit.isEntry = true;
             } else {
-                //if (game.isOutOfRange(baddie.collision.rect)) baddie.unit.defeat();
+                if (game.isOutOfRange(baddie.collision.rect)) baddie.unit.defeat();
             }
         });
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
@@ -1054,7 +1049,7 @@ class ScenePlay extends Mono {//プレイ画面
     }
     * stageDefault() {
         this.elaps = 0;
-        let phaseLength = 5;
+        let phaseLength = 999;
         let maxSpawn = 10;
         let spawnInterval = 1;
         const baddies = ['crow', 'dove'];
@@ -1096,7 +1091,8 @@ class ScenePlay extends Mono {//プレイ画面
         this.resetStage();
     }
     resetStage() {
-        this.player.reset(this.playerbullets, this);
+        this.player?.remove();
+        this.playerside.child.add(this.player = new Player(this.playerbullets, this));
         this.player.unit.invincible = true;//無敵
         this.playerbullets.child.removeAll();
         this.baddies.child.removeAll();
@@ -1119,7 +1115,7 @@ class Unit {//キャラのステータス
         this.reset();
     }
     reset() {
-        this.hp = this.maxHp = this.point = 0;
+        this.hp = this.maxHp = this.point = this.kocount = 1;
         this.isEntry = this.invincible = this.firing = false;
     }
     setHp(hp) {
@@ -1132,28 +1128,19 @@ class Unit {//キャラのステータス
     }
     defeat() {
         this.owner.remove();
-        return 1;
+        return this.kocount;
     }
     get isDefeat() { return this.hp <= 0; }
     get hpRatio() { return this.hp / this.maxHp };
 }
 class Player extends Mono {//プレイヤーキャラ
-    constructor() {
+    constructor(bullets, scene) {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
-        this.unit.defeat = () => {
-            this.isExist = false;
-            return 0;
-        }
-    }
-    reset(bullets, scene) {
-        this.isExist = true;
-        this.resetMix();
-        this.state.start('main', this.stateDefault(this, bullets, scene));
+        this.state.start('shot', this.stateDefault(this, bullets, scene));
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.setHp(1);
-        //this.unit.invincible = true;//無敵
-
+        this.unit.kocount = 0;
     }
     maneuver() {
         if (!this.isExist) return;
@@ -1200,7 +1187,6 @@ class Player extends Mono {//プレイヤーキャラ
 class Baddies extends Mono {//敵キャラ
     constructor() {
         super(new Child());
-        this.routines = this.createRoutine();
         const creator = () => new Mono(new State(), new Move(), new Moji(), new Collision(), new Unit());
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, creator);
     }
@@ -1214,75 +1200,75 @@ class Baddies extends Mono {//敵キャラ
         baddie.unit.point = data.point;
         return baddie;
     }
-    createRoutine() {
-        return {
-            zako1: function* (user, bullets, scene) {
+    routines = {
+        zako1: function* (user, bullets, scene) {
+            user.move.setEase(60, 0, 1, { isRepeat: true, vias: 2 });
+            user.move.set(0, 100);
+            while (true) {
+                yield undefined;
+                bullets.mulitWay(user.pos.x, user.pos.y);
+                yield* waitForTime(2);
+            }
+        },
+        zako2: function* (user, bullets, scene) {
+            while (true) {
+                yield undefined;
+                for (let i = 0; i < 3; i++) {
+                    bullets.mulitWay(user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.pos.x, ty: scene.player.pos.y, color: 'yellow' });
+                    yield* waitForTime(0.2);
+                }
+                yield* waitForTime(2);
+            }
+        },
+        boss1: function* (user, bullets, scene) {
+            const circleShot = function* () {
+                const count = 36;
+                for (let i = 0; i < 6; i++) {
+                    bullets.circle(user.pos.x, user.pos.y, { count: count, offset: ((360 / count) * 0.5) * (i % 2) });
+                    yield* waitForTime(0.5);
+                }
+            }
+            const spiralShot = function* () {
+                const deg = 360 / 6;
+                let counter = 0;
+                for (let i = 0; i < 16; i++) {
+                    for (let j = 0; j < 6; j++) {
+                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: (deg * j) + counter, count: 1, speed: 100, color: 'aqua' });
+                    }
+                    yield* waitForTime(0.15);
+                    counter += 11;
+                }
+            }
+            const guidegShot = function* () {
+                yield* waitForTime(2);
                 while (true) {
-                    yield undefined;
-                    bullets.mulitWay(user.pos.x, user.pos.y);
-                    yield* waitForTime(2);
-                }
-            },
-            zako2: function* (user, bullets, scene) {
-                while (true) {
-                    yield undefined;
-                    for (let i = 0; i < 3; i++) {
-                        bullets.mulitWay(user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.pos.x, ty: scene.player.pos.y, color: 'yellow' });
-                        yield* waitForTime(0.2);
+                    for (let j = 0; j < 3; j++) {
+                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, count: 4, space: 25, speed: 25, color: 'white', target: scene.player, aimSpeed: 1.5 });
+                        yield* waitForTime(1);
                     }
-                    yield* waitForTime(2);
+                    yield* waitForTime(3);
                 }
-            },
-            boss1: function* (user, bullets, scene) {
-                const circleShot = function* () {
-                    const count = 36;
-                    for (let i = 0; i < 6; i++) {
-                        bullets.circle(user.pos.x, user.pos.y, { count: count, offset: ((360 / count) * 0.5) * (i % 2) });
-                        yield* waitForTime(0.5);
-                    }
-                }
-                const spiralShot = function* () {
-                    const deg = 360 / 6;
-                    let counter = 0;
-                    for (let i = 0; i < 16; i++) {
-                        for (let j = 0; j < 6; j++) {
-                            bullets.mulitWay(user.pos.x, user.pos.y, { deg: (deg * j) + counter, count: 1, speed: 100, color: 'aqua' });
-                        }
-                        yield* waitForTime(0.15);
-                        counter += 11;
-                    }
-                }
-                const guidegShot = function* () {
-                    yield* waitForTime(2);
-                    while (true) {
-                        for (let j = 0; j < 3; j++) {
-                            bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, count: 4, space: 25, speed: 25, color: 'white', target: scene.player, aimSpeed: 1.5 });
-                            yield* waitForTime(1);
-                        }
-                        yield* waitForTime(3);
-                    }
-                }
-                yield* waitForTime(0.5);
-                user.state.start('shot3', guidegShot());
-                let currentPattern = 0;
-                while (user.unit.hpRatio > 0.5) {
-                    if (currentPattern === 0) {
-                        user.state.start('shot1', circleShot());
-                        yield* waitForFrag(() => !user.state.isEnable('shot1'));
-                    } else {
-                        user.state.start('shot2', spiralShot());
-                        yield* waitForFrag(() => !user.state.isEnable('shot2'));
-                    }
-                    yield* waitForTime(2);
-                    currentPattern = (currentPattern + 1) % 2;
-                }
-                while (true) {
-                    user.state.start('shot2', spiralShot());
-                    yield* waitForTime(0.8);
+            }
+            yield* waitForTime(0.5);
+            user.state.start('shot3', guidegShot());
+            let currentPattern = 0;
+            while (user.unit.hpRatio > 0.5) {
+                if (currentPattern === 0) {
                     user.state.start('shot1', circleShot());
-                    yield* waitForFrag(() => !user.state.isEnable('shot1') && !user.state.isEnable('shot2'));
-                    yield* waitForTime(2);
+                    yield* waitForFrag(() => !user.state.isEnable('shot1'));
+                } else {
+                    user.state.start('shot2', spiralShot());
+                    yield* waitForFrag(() => !user.state.isEnable('shot2'));
                 }
+                yield* waitForTime(2);
+                currentPattern = (currentPattern + 1) % 2;
+            }
+            while (true) {
+                user.state.start('shot2', spiralShot());
+                yield* waitForTime(0.8);
+                user.state.start('shot1', circleShot());
+                yield* waitForFrag(() => !user.state.isEnable('shot1') && !user.state.isEnable('shot2'));
+                yield* waitForTime(2);
             }
         }
     }
