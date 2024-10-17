@@ -348,8 +348,6 @@ class Pos {//座標コンポーネント
     }
     reset() {
         this.set(0, 0, 0, 0);
-        this.setOrigin(0, 0);
-        this.revo = 0;
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
         this.parent = undefined;//座標リンクつける？
@@ -361,22 +359,11 @@ class Pos {//座標コンポーネント
         this.height = height;
         return this;
     }
-    setOrigin(x, y) {
-        this.originX = x;
-        this.originY = y;
-    }
-    setRevo(deg) {
-        const r = this.revo * Util.radian;
-        const rx = this.x - this.originX;
-        const ry = this.y - this.originY;
-        this.x = this.originX + Util.xRotaRad(rx, ry, r);
-        this.y = this.originY + Util.yRotaRad(rx, ry, r);
-    }
     getScreenX = () => Math.floor(this.x - this.align * this.width * 0.5);
     getScreenY = () => Math.floor(this.y - this.valign * this.height * 0.5);
     get rect() { return this._rect.set(this.getScreenX(), this.getScreenY(), this.width, this.height) }
-    get right(){return this.getScreenX+this.width;}
-    get bottom(){return this.getScreenY+this.height;}
+    get right() { return this.getScreenX + this.width; }
+    get bottom() { return this.getScreenY + this.height; }
 }
 class Move {//動作コンポーネント
     constructor() {
@@ -386,6 +373,7 @@ class Move {//動作コンポーネント
     reset() {
         this.set(0, 0);
         this.setEase(0, 0, 0);
+        this.setRevo(0, 0, 0);
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
@@ -393,33 +381,40 @@ class Move {//動作コンポーネント
         this.vxc = vxc;
         this.vyc = vyc;
     }
-    setEase(x, y, time, { isRepeat = true, vias = 1, ease = (t) => Math.sin(t * Math.PI) } = {}) {
+    setEase(x, y, time, { speed = 360, ease = (t) => -Util.degToX(t) } = {}) {
         this.ex = x;
         this.ey = y;
         this.bvx = 0;
         this.bvy = 0;
         this.time = time;
-        this.elaps = 0;
-        this.isRepeat = isRepeat;
-        this.vias = vias;
+        this.timeOfs = game.sec;
+        this.beforeEase = 0;
+        this.speed = speed;
         this.ease = ease
+    }
+    setRevo(x, y, speedDeg) {
+        this.originX = x;
+        this.originY = y;
+        this.revo = speedDeg;
     }
     update() {
         const pos = this.owner.pos;
-        if (this.time > 0) {
-            if (this.elaps > this.time) {
-                this.elaps = 0;
-                if (!this.isRepeat) this.time = 0;
-            }
-            const e = this.ease(Math.min((this.elaps += game.delta / this.time) * this.vias, this.vias));
-            const x = this.ex * e;
-            const y = this.ey * e;
-            pos.x += x - this.bvx;
-            pos.y += y - this.bvy;
-            this.bvx = x;
-            this.bvy = y;
+        if (this.time !== 0) {
+            const t = game.sec - this.timeOfs;
+            const e = this.ease(t * this.speed);
+            const ce = e - this.beforeEase;
+            this.beforeEase = e;
+            pos.x += this.ex * ce;
+            pos.y += this.ey * ce;
+            if (this.time > 0 && t >= this.time) this.time = 0;
         }
-        if (this.revo !== 0) pos.setRevo(this.revo * game.delta);
+        if (this.revo !== 0) {
+            const r = (this.revo * game.delta) * Util.radian;
+            const rx = pos.x - this.originX;
+            const ry = pos.y - this.originY;
+            pos.x = this.originX + Util.xRotaRad(rx, ry, r);
+            pos.y = this.originY + Util.yRotaRad(rx, ry, r);
+        }
         pos.x += this.vx * game.delta;
         pos.y += this.vy * game.delta;
         this.vx *= this.vxc;
@@ -1048,7 +1043,7 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * stageDefault() {
-        this.elaps = 1000;
+        this.elaps = 0;
         let phaseLength = 999;
         let maxSpawn = 10;
         let spawnInterval = 1;
@@ -1210,12 +1205,8 @@ class Baddies extends Mono {//敵キャラ
         }
     }
     routines = {
-        zako1: function* (user, bullets, scene) {
-if(user.pos.x<)
-
-
-
-            user.move.setEase(60, 0, 1, { isRepeat: true, vias: 2 });
+        zako1: function* (user, bullets, scene) {          
+            user.move.setEase(60, 0,-1);
             user.move.set(0, 100);
             while (true) {
                 yield undefined;
@@ -1224,6 +1215,9 @@ if(user.pos.x<)
             }
         },
         zako2: function* (user, bullets, scene) {
+            if(user.pos.right<0){
+                user.move.setEase( user.pos.x, 0,-1);
+            }
             while (true) {
                 yield undefined;
                 for (let i = 0; i < 3; i++) {
@@ -1271,7 +1265,7 @@ if(user.pos.x<)
                 const timeOfs = game.sec;
                 while (true) {
                     for (let i = 0; i < 60; i++) {
-                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (20 * Util.degToX((timeOfs - game.sec) * 120)), count: 1, speed: 400, color: 'aqua' });
+                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (20 * Util.degToX((game.sec - timeOfs) * 120)), count: 1, speed: 400, color: 'aqua' });
                         yield* waitForTime(0.05);
                     }
                     yield* waitForTime(1);
