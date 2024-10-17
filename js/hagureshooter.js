@@ -88,7 +88,8 @@ class Game {//ゲーム本体
     popScene = () => this.root.child.pop();
     setState = (name, state) => this.root.state.start(name, state);
     isOutOfRange = (rect) => !this.screenRect.isIntersect(rect);
-    get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)) };
+    get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
+    get sec() { return this.time / 1000; }
 }
 class Layers {//レイヤー管理
     constructor(width, height) {
@@ -157,7 +158,7 @@ class Layer {//レイヤー
         if (!this.isUpdate || !this.blur || this.isPauseBlur) return;
         const ctx = this.getBlurContext();
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        ctx.globalAlpha = 0.6;
+        ctx.globalAlpha = 0.7;
         ctx.drawImage(this.canvas, 0, 0);
     }
 }
@@ -235,7 +236,8 @@ class Util {//便利メソッド詰め合わせ
     }
     static xRotaRad = (x, y, rad) => Math.cos(rad) * x - Math.sin(rad) * y;
     static yRotaRad = (x, y, rad) => Math.sin(rad) * x + Math.cos(rad) * y;
-    static distanse = (x, y, x2, y2) => Math.sqrt(Math.pow((x - x2), 2) + Math.pow((y - y2), 2));
+    static distanse = (x, y) => Math.sqrt(x * x + y * y);
+    static normalize = (v, distance) => v / distance;
     static dot = (x, y, x2, y2) => x * x2 + y * y2;
     static cross = (x, y, x2, y2) => x * y2 - y * x2;
     static lerp = (start, end, t) => (1 - t) * start + t * end;
@@ -347,6 +349,7 @@ class Pos {//座標コンポーネント
     reset() {
         this.set(0, 0, 0, 0);
         this.setOrigin(0, 0);
+        this.revo = 0;
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
         this.parent = undefined;//座標リンクつける？
@@ -363,7 +366,7 @@ class Pos {//座標コンポーネント
         this.originY = y;
     }
     setRevo(deg) {
-        const r = revo * Util.radian;
+        const r = this.revo * Util.radian;
         const rx = this.x - this.originX;
         const ry = this.y - this.originY;
         this.x = this.originX + Util.xRotaRad(rx, ry, r);
@@ -372,6 +375,8 @@ class Pos {//座標コンポーネント
     getScreenX = () => Math.floor(this.x - this.align * this.width * 0.5);
     getScreenY = () => Math.floor(this.y - this.valign * this.height * 0.5);
     get rect() { return this._rect.set(this.getScreenX(), this.getScreenY(), this.width, this.height) }
+    get right(){return this.getScreenX+this.width;}
+    get bottom(){return this.getScreenY+this.height;}
 }
 class Move {//動作コンポーネント
     constructor() {
@@ -381,7 +386,6 @@ class Move {//動作コンポーネント
     reset() {
         this.set(0, 0);
         this.setEase(0, 0, 0);
-        this.revo;
     }
     set(vx, vy, vxc = 1, vyc = 1) {
         this.vx = vx;
@@ -403,11 +407,11 @@ class Move {//動作コンポーネント
     update() {
         const pos = this.owner.pos;
         if (this.time > 0) {
-            if (this.elaps >= this.time) {
+            if (this.elaps > this.time) {
                 this.elaps = 0;
                 if (!this.isRepeat) this.time = 0;
             }
-            const e = this.ease((this.elaps += game.delta / this.time) * this.vias);
+            const e = this.ease(Math.min((this.elaps += game.delta / this.time) * this.vias, this.vias));
             const x = this.ex * e;
             const y = this.ey * e;
             pos.x += x - this.bvx;
@@ -1044,7 +1048,7 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * stageDefault() {
-        this.elaps = 0;
+        this.elaps = 1000;
         let phaseLength = 999;
         let maxSpawn = 10;
         let spawnInterval = 1;
@@ -1055,13 +1059,14 @@ class ScenePlay extends Mono {//プレイ画面
                 continue;
             }
             yield* waitForTime(spawnInterval);
+
             this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
         }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
-        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.5, 'greatcrow', this.baddiesbullets, this);
+        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.25, 'greatcrow', this.baddiesbullets, this);
         //boss.move.setEase(0, 10, 1, { vias: 2 });
-        boss.move.setRevo(200, 200, 200);
+        //boss.move.setRevo(200, 200, 200);
 
         this.bossHPgauge.isExist = true;
         this.bossHPgauge.max = boss.unit.maxHp;
@@ -1196,8 +1201,20 @@ class Baddies extends Mono {//敵キャラ
         baddie.unit.point = data.point;
         return baddie;
     }
+    formation = {
+        left: function* (row, name, bullets, scene) {
+            for (let i = 0; i < row; i++) {
+                this.spawn(game.width - (game.width * 0.25), (game.height * 0.2) * (i * 80));
+                yield* waitForTime(0.5);
+            }
+        }
+    }
     routines = {
         zako1: function* (user, bullets, scene) {
+if(user.pos.x<)
+
+
+
             user.move.setEase(60, 0, 1, { isRepeat: true, vias: 2 });
             user.move.set(0, 100);
             while (true) {
@@ -1227,12 +1244,37 @@ class Baddies extends Mono {//敵キャラ
             const spiralShot = function* () {
                 const deg = 360 / 6;
                 let counter = 0;
-                for (let i = 0; i < 16; i++) {
+                for (let i = 0; i < 64; i++) {
                     for (let j = 0; j < 6; j++) {
                         bullets.mulitWay(user.pos.x, user.pos.y, { deg: (deg * j) + counter, count: 1, speed: 100, color: 'aqua' });
                     }
-                    yield* waitForTime(0.15);
+                    yield* waitForTime(0.05);
                     counter += 11;
+                }
+            }
+            const ringShot = function* (isOneTime) {
+                do {
+                    const bs = bullets.circle(user.pos.x, user.pos.y, { count: 18, color: 'lime' });
+                    yield* waitForTime(0.5);
+                    for (const b of bs) {
+                        const vx = scene.player.pos.x - b.pos.x;
+                        const vy = scene.player.pos.y - b.pos.y;
+                        const d = Util.distanse(vx, vy);
+                        const x = Util.normalize(vx, d) * 50;
+                        const y = Util.normalize(vy, d) * 50;
+                        b.move.set(x, y, 1.03, 1.03);
+                    }
+                    yield* waitForTime(1);
+                } while (!isOneTime);
+            }
+            const fanShot = function* () {
+                const timeOfs = game.sec;
+                while (true) {
+                    for (let i = 0; i < 60; i++) {
+                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (20 * Util.degToX((timeOfs - game.sec) * 120)), count: 1, speed: 400, color: 'aqua' });
+                        yield* waitForTime(0.05);
+                    }
+                    yield* waitForTime(1);
                 }
             }
             const guidegShot = function* () {
@@ -1245,20 +1287,45 @@ class Baddies extends Mono {//敵キャラ
                     yield* waitForTime(3);
                 }
             }
+            const multiwayShot = function* () {
+                while (true) {
+                    yield undefined;
+                    for (let i = 0; i < 8; i++) {
+                        bullets.mulitWay(user.pos.x, user.pos.y, { count: 3, speed: 400, color: 'lime' });
+                        yield* waitForTime(0.05);
+                    }
+                    yield* waitForTime(2);
+                }
+            }
+
             yield* waitForTime(0.5);
             user.state.start('shot3', guidegShot());
             let currentPattern = 0;
+
+            user.state.start('shot5', multiwayShot());
+            yield* waitForFrag(() => !user.state.isEnable('shot5'));
+
+
             while (user.unit.hpRatio > 0.5) {
-                if (currentPattern === 0) {
-                    user.state.start('shot1', circleShot());
-                    yield* waitForFrag(() => !user.state.isEnable('shot1'));
-                } else {
-                    user.state.start('shot2', spiralShot());
-                    yield* waitForFrag(() => !user.state.isEnable('shot2'));
+                switch (currentPattern) {
+                    case 0:
+                        user.state.start('shot1', circleShot());
+                        yield* waitForFrag(() => !user.state.isEnable('shot1'));
+                        break;
+                    case 1:
+                        user.state.start('shot2', spiralShot());
+                        yield* waitForFrag(() => !user.state.isEnable('shot2'));
+                        break;
+                    case 2:
+                        user.state.start('shot4', ringShot(true));
+                        yield* waitForFrag(() => !user.state.isEnable('shot4'));
+                        break;
+
                 }
                 yield* waitForTime(2);
-                currentPattern = (currentPattern + 1) % 2;
+                currentPattern = (currentPattern + 1) % 3;
             }
+            user.state.start('shot4', ringShot(false));
             while (true) {
                 user.state.start('shot2', spiralShot());
                 yield* waitForTime(0.8);
@@ -1277,11 +1344,11 @@ class BulletBox extends Mono {//弾
     }
     firing(x, y, vx, vy, color) {
         const bullet = this.child.pool('bullet');
-        bullet.pos.set(x, y, 8, 8);
+        bullet.pos.set(x, y, 12, 12);
         bullet.pos.align = 1;
         bullet.pos.valign = 1;
         bullet.move.set(vx, vy);
-        bullet.collision.set(6, 6);
+        bullet.collision.set(8, 8);
         bullet.brush.circle();
         bullet.brush.color = color;
         return bullet;
@@ -1290,8 +1357,9 @@ class BulletBox extends Mono {//弾
         let d = deg;
         if (isAim) d = Util.xyToDeg(tx - x, ty - y);
         const offset = space * (count - 1) / 2;
+        const result = [];
         for (let i = 0; i < count; i++) {
-            const bullet = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color);
+            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color);
             if (target) {
                 bullet.guided.target = target;
                 bullet.guided.aimSpeed = aimSpeed;
@@ -1299,12 +1367,15 @@ class BulletBox extends Mono {//弾
                 bullet.move.vyc = 1.03;
             }
         }
+        return result;
     }
     circle(x, y, { count = 36, offset = 0, speed = 150, color = 'red', } = {}) {
         const d = 360 / count;
+        const result = [];
         for (let i = 0; i < count; i++) {
-            this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, color);
+            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, color);
         }
+        return result;
     }
 }
 class ScenePause extends Mono {//中断メニュー画面
