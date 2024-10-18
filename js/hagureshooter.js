@@ -1064,6 +1064,8 @@ class ScenePlay extends Mono {//プレイ画面
                 continue;
             }
             yield* waitForTime(spawnInterval);
+            yield* this.state.startAndWait(this.baddies.formation.top.bind(this.baddies)(game.width*0.5, 'v', 3, 'dove', undefined, this.baddiesbullets, this));
+
             yield* this.state.startAndWait(this.baddies.formation.left.bind(this.baddies)(4, 'dove', this.baddiesbullets, this));
             yield* waitForTime(1);
             yield* this.state.startAndWait(this.baddies.formation.right.bind(this.baddies)(4, 'dove', this.baddiesbullets, this));
@@ -1211,10 +1213,18 @@ class Baddies extends Mono {//敵キャラ
         return baddie;
     }
     formation = {
-        top: function* (x,n, type, name, pattern, bullets, scene) {
+        top: function* (x, type, n, name, pattern, bullets, scene) {
             switch (type) {
                 case 'v':
-
+                    this.spawn(x, -(game.height * 0.2), name, bullets, scene);
+                    yield* waitForTime(1);
+                    let space = 50;
+                    for (let i = 0; i < n; i++) {
+                        this.spawn(x - space, -(game.height * 0.2), name, bullets, scene);
+                        this.spawn(x + space, -(game.height * 0.2), name, bullets, scene);
+                        yield* waitForTime(1);
+                        space *= 2;
+                    }
                     break;
                 case 'delta':
                     break;
@@ -1222,10 +1232,6 @@ class Baddies extends Mono {//敵キャラ
                     break;
                 case 'abrest':
                     break;
-            }
-            for (let i = 0; i < row; i++) {
-                this.spawn(-(game.width * 0.25), (game.height * 0.2) + (i * 60), name, bullets, scene);
-                yield* waitForTime(0.25);
             }
             console.log('いいい');
         },
@@ -1259,11 +1265,15 @@ class Baddies extends Mono {//敵キャラ
                 while (true) {
                     yield undefined;
                     bullets.mulitWay(user.pos.x, user.pos.y);
-                    yield* waitForTime(0.5);
+                    yield* waitForTime(2);
                 }
             }
-
-
+            if (user.pos.bottom < 0) {
+                user.move.set(0, 50);
+                while (true) {
+                    yield*user.state.startAndWait(shot1());
+                }
+            }
             if (user.pos.right < 0) {
                 const vias = 0.0375;
                 user.move.set(600, 0, 1 - vias);
@@ -1397,16 +1407,16 @@ class BulletBox extends Mono {//弾
     }
     firing(x, y, vx, vy, color) {
         const bullet = this.child.pool('bullet');
-        bullet.pos.set(x, y, 12, 12);
+        bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
         bullet.pos.valign = 1;
         bullet.move.set(vx, vy);
-        bullet.collision.set(8, 8);
+        bullet.collision.set(6, 6);
         bullet.brush.circle();
         bullet.brush.color = color;
         return bullet;
     }
-    mulitWay(x, y, { deg = 270, space = 15, count = 5, speed = 150, color = 'red', isAim = false, tx = 0, ty = 0, target = undefined, aimSpeed = 0 } = {}) {
+    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, color = 'red', isAim = false, tx = 0, ty = 0, target = undefined, aimSpeed = 0 } = {}) {
         let d = deg;
         if (isAim) d = Util.xyToDeg(tx - x, ty - y);
         const offset = space * (count - 1) / 2;
