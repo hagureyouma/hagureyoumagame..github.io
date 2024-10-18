@@ -86,7 +86,7 @@ class Game {//ゲーム本体
     }
     pushScene = scene => this.root.child.add(scene);
     popScene = () => this.root.child.pop();
-    setState = (name, state) => this.root.state.start(name, state);
+    setState = (state) => this.root.state.start(state);
     isOutOfRange = (rect) => !this.screenRect.isIntersect(rect);
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
     get sec() { return this.time / 1000; }
@@ -225,6 +225,7 @@ class Util {//便利メソッド詰め合わせ
     static naname = 0.71;
     static radian = Math.PI / 180;
     static degree = 180 / Math.PI;
+    static uniqueId = () => Date.now().toString(16) + Math.floor(1000 * Math.random()).toString(16);
     static parseUnicode = (code) => String.fromCharCode(parseInt(code, 16));
     static clamp = (value, min, max) => Math.min(Math.max(value, min), max);
     static degToX = (deg) => Math.cos(deg * Util.radian);
@@ -236,6 +237,7 @@ class Util {//便利メソッド詰め合わせ
     }
     static xRotaRad = (x, y, rad) => Math.cos(rad) * x - Math.sin(rad) * y;
     static yRotaRad = (x, y, rad) => Math.sin(rad) * x + Math.cos(rad) * y;
+    static spdToDeg = (speed, radius) => (speed * 180) / (Math.PI * radius);
     static distanse = (x, y) => Math.sqrt(x * x + y * y);
     static normalize = (v, distance) => v / distance;
     static dot = (x, y, x2, y2) => x * x2 + y * y2;
@@ -306,20 +308,31 @@ class State {//ジェネレータコンポーネント
         this.generators = new Map();
     }
     reset = () => this.generators.clear();
-    isEnable(name) { return this.generators.get(name) !== undefined };
-    start = (name, state) => this.generators.set(name, state);
-    stop = (name) => this.generators.delete(name);
+    isEnable = (id) => this.generators.get(id) !== undefined;
+    start(state, id) {
+        const newid = this.generators.get(id) ? id : Util.uniqueId();
+        this.generators.set(newid, state);
+        return newid;
+    }
+    startAndWait = (state, id) => this.wait(this.start(state, id));
+    stop = (id) => this.generators.delete(id);
     update() {
-        for (const [name, generator] of this.generators.entries()) {
+        for (const [id, generator] of this.generators.entries()) {
             let result;
             while (generator) {
                 result = generator?.next(result);
-                if (result.done) this.stop(name);
+                if (result.done) this.stop(id);
                 if (result.value === undefined) break;
             }
         }
-
     }
+    wait = (...ids) => waitForFrag(() => {
+        let result = true;
+        for (const id of ids) {
+            result &= !this.isEnable(id);
+        }
+        return result;
+    });
 }
 function* waitForTime(time) {//タイマー
     time -= game.delta;
@@ -361,9 +374,9 @@ class Pos {//座標コンポーネント
     }
     getScreenX = () => Math.floor(this.x - this.align * this.width * 0.5);
     getScreenY = () => Math.floor(this.y - this.valign * this.height * 0.5);
+    get right() { return this.getScreenX() + this.width; }
+    get bottom() { return this.getScreenY() + this.height; }
     get rect() { return this._rect.set(this.getScreenX(), this.getScreenY(), this.width, this.height) }
-    get right() { return this.getScreenX + this.width; }
-    get bottom() { return this.getScreenY + this.height; }
 }
 class Move {//動作コンポーネント
     constructor() {
@@ -375,17 +388,14 @@ class Move {//動作コンポーネント
         this.setEase(0, 0, 0);
         this.setRevo(0, 0, 0);
     }
-    set(vx, vy, vxc = 1, vyc = 1) {
+    set(vx, vy, vc = 1) {
         this.vx = vx;
         this.vy = vy;
-        this.vxc = vxc;
-        this.vyc = vyc;
+        this.vc = vc;
     }
     setEase(x, y, time, { speed = 360, ease = (t) => -Util.degToX(t) } = {}) {
         this.ex = x;
         this.ey = y;
-        this.bvx = 0;
-        this.bvy = 0;
         this.time = time;
         this.timeOfs = game.sec;
         this.beforeEase = 0;
@@ -417,8 +427,8 @@ class Move {//動作コンポーネント
         }
         pos.x += this.vx * game.delta;
         pos.y += this.vy * game.delta;
-        this.vx *= this.vxc;
-        this.vy *= this.vyc;
+        this.vx *= this.vc;
+        this.vy *= this.vc;
     }
 }
 class Guided {//ホーミングコンポーネント
@@ -706,7 +716,7 @@ class Tsubu extends Mono {//パーティクル
             t.pos.set(x, y, 8, 8);
             t.pos.align = 1;
             t.pos.valign = 1;
-            t.move.set(Util.degToX(deg * i) * speed, Util.degToY(deg * i) * speed, c, c);
+            t.move.set(Util.degToX(deg * i) * speed, Util.degToY(deg * i) * speed, c);
             t.jumyo.lifeSpan = lifeSpan;
             t.jumyo.lifeStage = 0;
         }
@@ -890,7 +900,7 @@ class SceneTitle extends Mono {//タイトル画面
         //操作方法
         // this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
         // this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { align: 1, valign: 1 }));        
-        game.setState('root', this.stateDefault());
+        game.setState(this.stateDefault());
     }
     *stateDefault() {
         this.presskey.color.blink(0.5);
@@ -957,11 +967,11 @@ class ScenePlay extends Mono {//プレイ画面
         // this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
         // this.textScore.pos.x = 2;
         // this.textScore.pos.y = 48;
-
+        this.stateStageId;
         // this.fiber.add(this.stageRunner(con.stages[0]));      
         this.newGame();
     }
-    get isClear() { return !this.state.isEnable('stage'); }
+    get isClear() { return !this.state.isEnable(this.stateStageId); }
     get isFailure() { return this.player.unit.isDefeat }
     *showTelop(text, time, blink = 0) {
         this.telop.moji.set(text);
@@ -1054,8 +1064,11 @@ class ScenePlay extends Mono {//プレイ画面
                 continue;
             }
             yield* waitForTime(spawnInterval);
-
-            this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
+            yield* this.state.startAndWait(this.baddies.formation.left.bind(this.baddies)(4, 'dove', this.baddiesbullets, this));
+            yield* waitForTime(1);
+            yield* this.state.startAndWait(this.baddies.formation.right.bind(this.baddies)(4, 'dove', this.baddiesbullets, this));
+            console.log('あああ');
+            //this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
         }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
@@ -1094,7 +1107,8 @@ class ScenePlay extends Mono {//プレイ画面
         this.baddies.child.removeAll();
         this.baddiesbullets.child.removeAll();
         this.effect.child.removeAll();
-        this.state.start('stage', this.stageDefault());
+        this.state.reset();
+        this.stateStageId = this.state.start(this.stageDefault(), this.stateStageId);
         game.layers.get('effect').clearBlur();
         this.telop.isExist = false;
         this.bossHPgauge.remove?.();
@@ -1132,7 +1146,7 @@ class Unit {//キャラのステータス
 class Player extends Mono {//プレイヤーキャラ
     constructor(bullets, scene) {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
-        this.state.start('shot', this.stateDefault(this, bullets, scene));
+        this.state.start(this.stateDefault.bind(this)(bullets, scene));
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.setHp(1);
@@ -1151,7 +1165,7 @@ class Player extends Mono {//プレイヤーキャラ
         }
         if (game.input.isDown('z')) this.unit.firing = true;
     }
-    *stateDefault(user, bullets, scene) {
+    *stateDefault(bullets, scene) {
         yield* waitForTime(0.5);
         this.unit.firing = false;
         const shotOption = { deg: 90, count: 1, speed: datas.player.bulletSpeed, color: 'yellow' };
@@ -1160,8 +1174,8 @@ class Player extends Mono {//プレイヤーキャラ
                 yield undefined;
                 continue;
             }
-            bullets.mulitWay(user.pos.x + 10, user.pos.y, shotOption);
-            bullets.mulitWay(user.pos.x - 10, user.pos.y, shotOption);
+            bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption);
+            bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption);
             this.unit.firing = false;
             yield* waitForTime(0.125);
         }
@@ -1189,7 +1203,7 @@ class Baddies extends Mono {//敵キャラ
     spawn(x, y, name, bullets, scene) {
         const data = datas.baddies[name];
         const baddie = this.child.pool(name);
-        baddie.state.start('main', this.routines[data.routine](baddie, bullets, scene));
+        baddie.state.start(this.routines[data.routine](baddie, bullets, scene));
         baddie.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.setHp(data.hp);
@@ -1197,16 +1211,42 @@ class Baddies extends Mono {//敵キャラ
         return baddie;
     }
     formation = {
+        top: function* (x,n, type, name, pattern, bullets, scene) {
+            switch (type) {
+                case 'v':
+
+                    break;
+                case 'delta':
+                    break;
+                case 'trail':
+                    break;
+                case 'abrest':
+                    break;
+            }
+            for (let i = 0; i < row; i++) {
+                this.spawn(-(game.width * 0.25), (game.height * 0.2) + (i * 60), name, bullets, scene);
+                yield* waitForTime(0.25);
+            }
+            console.log('いいい');
+        },
         left: function* (row, name, bullets, scene) {
             for (let i = 0; i < row; i++) {
-                this.spawn(game.width - (game.width * 0.25), (game.height * 0.2) * (i * 80));
-                yield* waitForTime(0.5);
+                this.spawn(-(game.width * 0.25), (game.height * 0.2) + (i * 60), name, bullets, scene);
+                yield* waitForTime(0.25);
             }
+            console.log('いいい');
+        },
+        right: function* (row, name, bullets, scene) {
+            for (let i = 0; i < row; i++) {
+                this.spawn(game.width + (game.width * 0.25), (game.height * 0.2) + (i * 60), name, bullets, scene);
+                yield* waitForTime(0.25);
+            }
+            console.log('いいい');
         }
     }
     routines = {
-        zako1: function* (user, bullets, scene) {          
-            user.move.setEase(60, 0,-1);
+        zako1: function* (user, bullets, scene) {
+            user.move.setEase(60, 0, -1);
             user.move.set(0, 100);
             while (true) {
                 yield undefined;
@@ -1215,17 +1255,41 @@ class Baddies extends Mono {//敵キャラ
             }
         },
         zako2: function* (user, bullets, scene) {
-            if(user.pos.right<0){
-                user.move.setEase( user.pos.x, 0,-1);
-            }
-            while (true) {
-                yield undefined;
-                for (let i = 0; i < 3; i++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.pos.x, ty: scene.player.pos.y, color: 'yellow' });
-                    yield* waitForTime(0.2);
+            const shot1 = function* () {
+                while (true) {
+                    yield undefined;
+                    bullets.mulitWay(user.pos.x, user.pos.y);
+                    yield* waitForTime(0.5);
                 }
-                yield* waitForTime(2);
             }
+
+
+            if (user.pos.right < 0) {
+                const vias = 0.0375;
+                user.move.set(600, 0, 1 - vias);
+                yield* waitForFrag(() => user.pos.x >= game.width * 0.4);
+                const shot1id = user.state.start(shot1());
+                user.move.vc = 1;
+                yield* waitForFrag(() => user.pos.x >= game.width * 0.6);
+                user.state.stop(shot1id);
+                user.move.vc = 1 + vias;
+            }
+            if (user.pos.getScreenX() > game.width) {
+                const vias = 0.0375;
+                user.move.set(-600, 0, 1 - vias);
+                yield* waitForFrag(() => user.pos.x < game.width * 0.6);
+                user.move.vc = 1;
+                yield* waitForFrag(() => user.pos.x < game.width * 0.4);
+                user.move.vc = 1 + vias;
+            }
+            // while (true) {
+            //     yield undefined;
+            //     for (let i = 0; i < 3; i++) {
+            //         bullets.mulitWay(user.pos.x, user.pos.y, { count: 3, isAim: true, tx: scene.player.pos.x, ty: scene.player.pos.y, color: 'yellow' });
+            //         yield* waitForTime(0.2);
+            //     }
+            //     yield* waitForTime(2);
+            // }
         },
         boss1: function* (user, bullets, scene) {
             const circleShot = function* () {
@@ -1256,7 +1320,7 @@ class Baddies extends Mono {//敵キャラ
                         const d = Util.distanse(vx, vy);
                         const x = Util.normalize(vx, d) * 50;
                         const y = Util.normalize(vy, d) * 50;
-                        b.move.set(x, y, 1.03, 1.03);
+                        b.move.set(x, y, 1.03);
                     }
                     yield* waitForTime(1);
                 } while (!isOneTime);
@@ -1293,38 +1357,33 @@ class Baddies extends Mono {//敵キャラ
             }
 
             yield* waitForTime(0.5);
-            user.state.start('shot3', guidegShot());
+            const guidedId = user.state.start(guidegShot());
             let currentPattern = 0;
 
-            user.state.start('shot5', multiwayShot());
-            yield* waitForFrag(() => !user.state.isEnable('shot5'));
+            yield* user.state.startAndWait(multiwayShot());
 
 
             while (user.unit.hpRatio > 0.5) {
                 switch (currentPattern) {
                     case 0:
-                        user.state.start('shot1', circleShot());
-                        yield* waitForFrag(() => !user.state.isEnable('shot1'));
+                        yield* user.state.startAndWait(circleShot());
                         break;
                     case 1:
-                        user.state.start('shot2', spiralShot());
-                        yield* waitForFrag(() => !user.state.isEnable('shot2'));
+                        yield* user.state.startAndWait(spiralShot());
                         break;
                     case 2:
-                        user.state.start('shot4', ringShot(true));
-                        yield* waitForFrag(() => !user.state.isEnable('shot4'));
+                        yield* user.state.startAndWait(ringShot(true));
                         break;
-
                 }
                 yield* waitForTime(2);
                 currentPattern = (currentPattern + 1) % 3;
             }
-            user.state.start('shot4', ringShot(false));
+            user.state.start(ringShot(false));
             while (true) {
-                user.state.start('shot2', spiralShot());
+                const spiralId = user.state.start(spiralShot());
                 yield* waitForTime(0.8);
-                user.state.start('shot1', circleShot());
-                yield* waitForFrag(() => !user.state.isEnable('shot1') && !user.state.isEnable('shot2'));
+                const circleId = user.state.start(circleShot());
+                yield* user.state.wait(spiralId, circleId);
                 yield* waitForTime(2);
             }
         }
@@ -1357,8 +1416,7 @@ class BulletBox extends Mono {//弾
             if (target) {
                 bullet.guided.target = target;
                 bullet.guided.aimSpeed = aimSpeed;
-                bullet.move.vxc = 1.03;
-                bullet.move.vyc = 1.03;
+                bullet.move.vc = 1.03;
             }
         }
         return result;
