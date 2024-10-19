@@ -256,7 +256,7 @@ class Util {//便利メソッド詰め合わせ
     }
     static shiffledArray = (length) => Util.shiffle(Util.serialArray(length));
     static randomTake = (arr, num) => Util.shiffle([...arr]).slice(0, num);
-    static randomArray = (range,length) => Util.shiffledArray(range).slice(0, length);
+    static randomArray = (range, length) => Util.shiffledArray(range).slice(0, length);
     static isGenerator = (obj) => obj && typeof obj.next === 'function' && typeof obj.throw === 'function';
 
     static isImageFile = (file) => /\.(jpg|jpeg|png|gif)$/i.test(file)
@@ -840,6 +840,7 @@ export const datas = {//ゲームデータ
         obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1'),
         crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1'),
         dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2'),
+        gibcrow: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 80, 10, 100, 'zako2'),
         greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1')
     },
     player: {
@@ -1259,12 +1260,14 @@ class Baddies extends Mono {//敵キャラ
                 case 'random':
                     const loopMax = Util.random(n, 1);
                     for (let i = 0; i < loopMax; i++) {
-                        const colMax=Math.floor((game.width / space)-1);
-                        const cols=Util.randomArray(colMax,Util.random(Math.min(n,colMax),1));
+                        const colMax = Math.floor((game.width / space) - 1);
+                        const cols = Util.randomArray(colMax, Util.random(Math.min(n, colMax), 1));
                         for (const col of cols) {
                             this.spawn(space * (col + 1), startY, name, bullets, scene);
+                            const wait = Util.random(n);
+                            if (wait) yield* waitForTime(wait * 0.1);
                         }
-                        yield* waitForTime(1 * Util.random(n, 1));
+                        yield* waitForTime(0.5 * Util.random(n, 1));
                     }
                     break;
             }
