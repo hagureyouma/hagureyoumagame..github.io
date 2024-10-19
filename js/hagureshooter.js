@@ -227,6 +227,7 @@ class Util {//便利メソッド詰め合わせ
     static degree = 180 / Math.PI;
     static uniqueId = () => Date.now().toString(16) + Math.floor(1000 * Math.random()).toString(16);
     static parseUnicode = (code) => String.fromCharCode(parseInt(code, 16));
+    static isEven = (n) => n % 2 === 0;
     static clamp = (value, min, max) => Math.min(Math.max(value, min), max);
     static degToX = (deg) => Math.cos(deg * Util.radian);
     static degToY = (deg) => -Math.sin(deg * Util.radian);
@@ -243,10 +244,21 @@ class Util {//便利メソッド詰め合わせ
     static dot = (x, y, x2, y2) => x * x2 + y * y2;
     static cross = (x, y, x2, y2) => x * y2 - y * x2;
     static lerp = (start, end, t) => (1 - t) * start + t * end;
-    static random = (min, max) => Math.floor(Math.random() * (max + 1 - min) + min);
+    static random = (max, min = 0) => Math.floor(Math.random() * (max + 1 - min) + min);
     static average = (arr) => arr.reduce((prev, current, i, arr) => prev + current) / arr.length;
+    static serialArray = (length) => [...Array(length).keys()];
+    static shiffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    }
+    static shiffledArray = (length) => Util.shiffle(Util.serialArray(length));
+    static randomTake = (arr, num) => Util.shiffle([...arr]).slice(0, num);
+    static randomArray = (range,length) => Util.shiffledArray(range).slice(0, length);
     static isGenerator = (obj) => obj && typeof obj.next === 'function' && typeof obj.throw === 'function';
-    static isEven = (n) => n % 2 === 0;
+
     static isImageFile = (file) => /\.(jpg|jpeg|png|gif)$/i.test(file)
 }
 class Rect {//矩形
@@ -1058,19 +1070,19 @@ class ScenePlay extends Mono {//プレイ画面
         let maxSpawn = 10;
         let spawnInterval = 1;
         const baddies = ['crow', 'dove'];
-        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-            if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
-                yield undefined;
-                continue;
-            }
-            yield* waitForTime(spawnInterval);
-            yield* this.state.startAndWait(this.baddies.formation.top.bind(this.baddies)(game.width*0.5, 'v', 3, 'dove', undefined, this.baddiesbullets, this));
+        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+        //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
+        //         yield undefined;
+        //         continue;
+        //     }            
+        //     //this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
+        // }
 
-            yield* this.state.startAndWait(this.baddies.formation.left.bind(this.baddies)(4, 'dove', this.baddiesbullets, this));
-            yield* waitForTime(1);
-            yield* this.state.startAndWait(this.baddies.formation.right.bind(this.baddies)(4, 'dove', this.baddiesbullets, this));
-            console.log('あああ');
-            //this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
+        while (true) {
+            yield* this.baddies.formation.top.bind(this.baddies)(game.width * 0.5, 'random', 5, 'dove', undefined, this.baddiesbullets, this);
+
+            this.state.start(this.baddies.formation.side.bind(this.baddies)(false, 4, 'dove', undefined, this.baddiesbullets, this));
+            this.state.start(this.baddies.formation.side.bind(this.baddies)(true, 4, 'dove', undefined, this.baddiesbullets, this, 1));
         }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
@@ -1213,41 +1225,61 @@ class Baddies extends Mono {//敵キャラ
         return baddie;
     }
     formation = {
-        top: function* (x, type, n, name, pattern, bullets, scene) {
+        top: function* (x, type, n, name, pattern, bullets, scene, delay = 0) {
+            if (delay > 0) yield* waitForTime(delay);
+            const startX = -(game.width * 0.2);
+            const startY = -(game.height * 0.2);
+            const space = 40;
             switch (type) {
                 case 'v':
-                    this.spawn(x, -(game.height * 0.2), name, bullets, scene);
-                    yield* waitForTime(1);
-                    let space = 50;
                     for (let i = 0; i < n; i++) {
-                        this.spawn(x - space, -(game.height * 0.2), name, bullets, scene);
-                        this.spawn(x + space, -(game.height * 0.2), name, bullets, scene);
-                        yield* waitForTime(1);
-                        space *= 2;
+                        if (i !== 0) this.spawn(x - (space * i), startY, name, bullets, scene);
+                        this.spawn(x + (space * i), startY, name, bullets, scene);
+                        yield* waitForTime(0.5);
                     }
                     break;
                 case 'delta':
+                    for (let i = n - 1; i >= 0; i--) {
+                        if (i !== n) this.spawn(x - (space * i), startY, name, bullets, scene);
+                        this.spawn(x + (space * i), startY, name, bullets, scene);
+                        yield* waitForTime(0.5);
+                    }
                     break;
                 case 'trail':
+                    for (let i = 0; i < n; i++) {
+                        this.spawn(x, startY, name, bullets, scene);
+                        yield* waitForTime(0.5);
+                    }
                     break;
                 case 'abrest':
+                    for (let i = 0; i < n; i++) {
+                        this.spawn(x + (space * i), startY, name, bullets, scene);
+                    }
+                    break;
+                case 'random':
+                    const loopMax = Util.random(n, 1);
+                    for (let i = 0; i < loopMax; i++) {
+                        const colMax=Math.floor((game.width / space)-1);
+                        const cols=Util.randomArray(colMax,Util.random(Math.min(n,colMax),1));
+                        for (const col of cols) {
+                            this.spawn(space * (col + 1), startY, name, bullets, scene);
+                        }
+                        yield* waitForTime(1 * Util.random(n, 1));
+                    }
                     break;
             }
-            console.log('いいい');
         },
-        left: function* (row, name, bullets, scene) {
-            for (let i = 0; i < row; i++) {
-                this.spawn(-(game.width * 0.25), (game.height * 0.2) + (i * 60), name, bullets, scene);
+        side: function* (isRight, n, name, pattern, bullets, scene, delay = 0) {
+
+            if (delay > 0) yield* waitForTime(delay);
+            let x = -(game.width * 0.2);
+            if (isRight) x = -x + game.width;
+            const space = 40;
+            for (let i = 0; i < n; i++) {
+                const baddie = this.spawn(x, game.height * 0.2 + space * i, name, bullets, scene);
+                baddie.move.setEase(0, 10, -1);
                 yield* waitForTime(0.25);
             }
-            console.log('いいい');
-        },
-        right: function* (row, name, bullets, scene) {
-            for (let i = 0; i < row; i++) {
-                this.spawn(game.width + (game.width * 0.25), (game.height * 0.2) + (i * 60), name, bullets, scene);
-                yield* waitForTime(0.25);
-            }
-            console.log('いいい');
         }
     }
     routines = {
@@ -1269,9 +1301,10 @@ class Baddies extends Mono {//敵キャラ
                 }
             }
             if (user.pos.bottom < 0) {
-                user.move.set(0, 50);
+                user.move.set(0, 100);
+                user.move.setEase(5, 0, -1, { speed: 480 });
                 while (true) {
-                    yield*user.state.startAndWait(shot1());
+                    yield* user.state.startAndWait(shot1());
                 }
             }
             if (user.pos.right < 0) {
