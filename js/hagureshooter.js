@@ -384,11 +384,11 @@ class Pos {//座標コンポーネント
         this.height = height;
         return this;
     }
-    getScreenX = () => Math.floor(this.x - this.align * this.width * 0.5);
-    getScreenY = () => Math.floor(this.y - this.valign * this.height * 0.5);
-    get right() { return this.getScreenX() + this.width; }
-    get bottom() { return this.getScreenY() + this.height; }
-    get rect() { return this._rect.set(this.getScreenX(), this.getScreenY(), this.width, this.height) }
+    get left() { return Math.floor(this.x - this.align * this.width * 0.5) };
+    get top() { return Math.floor(this.y - this.valign * this.height * 0.5) };
+    get right() { return this.left + this.width; }
+    get bottom() { return this.top + this.height; }
+    get rect() { return this._rect.set(this.left, this.top, this.width, this.height) }
 }
 class Move {//動作コンポーネント
     constructor() {
@@ -643,7 +643,7 @@ class Moji {//文字表示コンポーネント
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
         ctx.fillStyle = this.owner.color.value;
-        ctx.fillText(this.getText, this.owner.pos.getScreenX(), this.owner.pos.getScreenY());
+        ctx.fillText(this.getText, this.owner.pos.left, this.owner.pos.top);
     }
 }
 class Label extends Mono {//文字表示
@@ -663,10 +663,10 @@ class Brush {//図形描画コンポーネント
         this.color = 'white';
         this.alpha = 1;
     }
-    rect = () => this.drawer = (ctx, pos) => ctx.fillRect(pos.getScreenX(), pos.getScreenY(), pos.width, pos.height);
+    rect = () => this.drawer = (ctx, pos) => ctx.fillRect(pos.left, pos.top, pos.width, pos.height);
     circle = () => this.drawer = (ctx, pos) => {
         ctx.beginPath();
-        ctx.arc(pos.getScreenX(), pos.getScreenY(), pos.width * 0.5, 0, Brush.rad);
+        ctx.arc(pos.left, pos.top, pos.width * 0.5, 0, Brush.rad);
         ctx.fill();
     }
     draw(ctx) {
@@ -703,8 +703,8 @@ class Gauge extends Mono {//ゲージ
         ctx.strokeStyle = this.color;
         ctx.lineWidth = this.border;
         const pos = this.pos;
-        const x = pos.getScreenX();
-        const y = pos.getScreenY();
+        const x = pos.left;
+        const y = pos.top;
         const b = this.border + 1;
         ctx.strokeRect(x, y, pos.width, pos.height);
         ctx.fillRect(x + b, y + b, (pos.width - b * 2) * (this.watch?.() / this.max), pos.height - (b * 2));
@@ -1080,10 +1080,12 @@ class ScenePlay extends Mono {//プレイ画面
         // }
 
         while (true) {
-            yield* this.baddies.formation.top.bind(this.baddies)(game.width * 0.5, 'random', 5, 'dove', undefined, this.baddiesbullets, this);
+            this.state.start(this.baddies.formation.bind(this.baddies)('randomtop', 0, 4, 'crow', undefined, this.baddiesbullets, this));
+            this.state.start(this.baddies.formation.bind(this.baddies)('randomside', 0, 4, 'dove', undefined, this.baddiesbullets, this));
+            yield* waitForTime(3);
 
-            this.state.start(this.baddies.formation.side.bind(this.baddies)(false, 4, 'dove', undefined, this.baddiesbullets, this));
-            this.state.start(this.baddies.formation.side.bind(this.baddies)(true, 4, 'dove', undefined, this.baddiesbullets, this, 1));
+            // this.state.start(this.baddies.formation.side.bind(this.baddies)(false, 4, 'dove', undefined, this.baddiesbullets, this));
+            // this.state.start(this.baddies.formation.side.bind(this.baddies)(true, 4, 'dove', undefined, this.baddiesbullets, this, 1));
         }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
@@ -1203,8 +1205,8 @@ class Player extends Mono {//プレイヤーキャラ
     }
     draw(ctx) {
         const pos = this.pos;
-        const x = this.pos.getScreenX();
-        const y = pos.getScreenY();
+        const x = this.pos.left;
+        const y = pos.top;
         ctx.fillStyle = 'yellow';
         ctx.fillRect(x + 31, y + 5, 10, 8);
     }
@@ -1215,87 +1217,109 @@ class Baddies extends Mono {//敵キャラ
         const creator = () => new Mono(new State(), new Move(), new Moji(), new Collision(), new Unit());
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, creator);
     }
-    spawn(x, y, name, bullets, scene) {
+    spawn(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
         const baddie = this.child.pool(name);
-        baddie.state.start(this.routines[data.routine](baddie, bullets, scene));
+        baddie.state.start(this.routines[data.routine](baddie, pattern, bullets, scene));
         baddie.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.setHp(data.hp);
         baddie.unit.point = data.point;
         return baddie;
     }
-    formation = {
-        top: function* (x, type, n, name, pattern, bullets, scene, delay = 0) {
-            if (delay > 0) yield* waitForTime(delay);
-            const startX = -(game.width * 0.2);
-            const startY = -(game.height * 0.2);
-            const space = 40;
-            switch (type) {
-                case 'v':
-                    for (let i = 0; i < n; i++) {
-                        if (i !== 0) this.spawn(x - (space * i), startY, name, bullets, scene);
-                        this.spawn(x + (space * i), startY, name, bullets, scene);
-                        yield* waitForTime(0.5);
-                    }
-                    break;
-                case 'delta':
-                    for (let i = n - 1; i >= 0; i--) {
-                        if (i !== n) this.spawn(x - (space * i), startY, name, bullets, scene);
-                        this.spawn(x + (space * i), startY, name, bullets, scene);
-                        yield* waitForTime(0.5);
-                    }
-                    break;
-                case 'trail':
-                    for (let i = 0; i < n; i++) {
-                        this.spawn(x, startY, name, bullets, scene);
-                        yield* waitForTime(0.5);
-                    }
-                    break;
-                case 'abrest':
-                    for (let i = 0; i < n; i++) {
-                        this.spawn(x + (space * i), startY, name, bullets, scene);
-                    }
-                    break;
-                case 'random':
-                    const loopMax = Util.random(n, 1);
-                    for (let i = 0; i < loopMax; i++) {
-                        const colMax = Math.floor((game.width / space) - 1);
-                        const cols = Util.randomArray(colMax, Util.random(Math.min(n, colMax), 1));
-                        for (const col of cols) {
-                            this.spawn(space * (col + 1), startY, name, bullets, scene);
-                            const wait = Util.random(n);
-                            if (wait) yield* waitForTime(wait * 0.1);
-                        }
-                        yield* waitForTime(0.5 * Util.random(n, 1));
-                    }
-                    break;
-            }
-        },
-        side: function* (isRight, n, name, pattern, bullets, scene, delay = 0) {
-
-            if (delay > 0) yield* waitForTime(delay);
-            let x = -(game.width * 0.2);
-            if (isRight) x = -x + game.width;
-            const space = 40;
+    *formation(type, x, n, name, pattern, bullets, scene, delay = 0) {
+        const baseL = -(game.width * 0.2);
+        const baseR = game.width + -baseL;
+        const LR = (isLeft = true) => isLeft ? baseL : baseR;
+        const baseY = -(game.height * 0.2);
+        const space = 40;
+        const vform = function* (isV = true) {
             for (let i = 0; i < n; i++) {
-                const baddie = this.spawn(x, game.height * 0.2 + space * i, name, bullets, scene);
-                baddie.move.setEase(0, 10, -1);
+                const col = isV ? i : (n - 1) - i;
+                if (col !== 0) this.spawn(x - (space * col), baseY, name, bullets, scene);
+                this.spawn(x + (space * col), baseY, name, pattern, bullets, scene);
+                yield* waitForTime(0.5);
+            }
+        }
+        const sideform = function* (isLeft = true) {
+            for (let i = 0; i < n; i++) {
+                this.spawn(LR(isLeft), game.height * 0.2 + space * i, name, pattern, bullets, scene);
                 yield* waitForTime(0.25);
             }
         }
+        const randomform = function* (isTop = true) {
+            const loopMax = Util.random(n, 1);
+            const max = Math.floor(isTop ? (game.width / space) - 1 : (game.height * 0.6) / space);
+            const spawner = isTop ? (pos) => this.spawn(space * (pos + 1), baseY, name, pattern, bullets, scene) : (pos) => this.spawn(LR(Boolean(Util.random(1))), space * (pos + 1), name, pattern, bullets, scene);
+            for (let i = 0; i < loopMax; i++) {
+                const poss = Util.randomArray(max, Util.random(Math.min(n, max), 1));
+                for (const pos of poss) {
+                    spawner(pos);
+                    const wait = Util.random(n);
+                    if (wait) yield* waitForTime(wait * 0.05);
+                }
+                yield* waitForTime(1 * Util.random(n, 1));
+            }
+        }
+        if (delay > 0) yield* waitForTime(delay);
+        switch (type) {
+            case 'v':
+                yield* vform.bind(this)();
+                break;
+            case 'delta':
+                yield* vform.bind(this)(false);
+                break;
+            case 'trail':
+                for (let i = 0; i < n; i++) {
+                    this.spawn(x, baseY, name, pattern, bullets, scene);
+                    yield* waitForTime(0.5);
+                }
+                break;
+            case 'abrest':
+                for (let i = 0; i < n; i++)this.spawn(x + (space * i), baseY, name, pattern, bullets, scene);
+                break;
+            case 'topsingle':
+                this.spawn(x, baseY, name, pattern, bullets, scene);
+                break;
+            case 'randomtop':
+                yield* randomform.bind(this)();
+                break;
+            case 'left':
+                yield* sideform.bind(this)();
+                break;
+            case 'right':
+                yield* sideform.bind(this)(false);
+                break;
+            case 'randomside':
+                yield* randomform.bind(this)(false);
+                break;
+        }
     }
     routines = {
-        zako1: function* (user, bullets, scene) {
-            user.move.setEase(60, 0, -1);
-            user.move.set(0, 100);
+        zako1: function* (user, pattern, bullets, scene) {
+            if (user.pos.bottom < 0) {
+                if (user.pos.right < 0) {
+
+                //} else if (user.pos.) {
+
+                }
+
+
+                user.move.set(0, 100);
+                user.move.setEase(5, 0, -1, { speed: 480 });
+            }
+            const shot1 = function* () {
+                while (true) {
+                    yield undefined;
+                    bullets.mulitWay(user.pos.x, user.pos.y, { color: 'red' });
+                    yield* waitForTime(2);
+                }
+            }
             while (true) {
-                yield undefined;
-                bullets.mulitWay(user.pos.x, user.pos.y);
-                yield* waitForTime(2);
+                yield* user.state.startAndWait(shot1());
             }
         },
-        zako2: function* (user, bullets, scene) {
+        zako2: function* (user, pattern, bullets, scene) {
             const shot1 = function* () {
                 while (true) {
                     yield undefined;
@@ -1320,7 +1344,7 @@ class Baddies extends Mono {//敵キャラ
                 user.state.stop(shot1id);
                 user.move.vc = 1 + vias;
             }
-            if (user.pos.getScreenX() > game.width) {
+            if (user.pos.left > game.width) {
                 const vias = 0.0375;
                 user.move.set(-600, 0, 1 - vias);
                 yield* waitForFrag(() => user.pos.x < game.width * 0.6);
@@ -1336,6 +1360,9 @@ class Baddies extends Mono {//敵キャラ
             //     }
             //     yield* waitForTime(2);
             // }
+        },
+        zako3: function* (yser, bullet, scene) {
+
         },
         boss1: function* (user, bullets, scene) {
             const circleShot = function* () {
