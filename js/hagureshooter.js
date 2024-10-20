@@ -1228,38 +1228,34 @@ class Baddies extends Mono {//敵キャラ
         return baddie;
     }
     *formation(type, x, n, name, pattern, bullets, scene, delay = 0) {
-        const baseL = -(game.width * 0.2);
-        const baseR = game.width + -baseL;
-        const LR = (isLeft = true) => isLeft ? baseL : baseR;
-        const baseY = -(game.height * 0.2);
-        const space = 40;
+        const size = datas.baddies[name].size;
+        const baseL = -size;
+        const baseR = game.width + size;
+        const LR = (isLeft) => isLeft ? baseL : baseR;
+        const baseY = -size
         const vform = function* (isV = true) {
             for (let i = 0; i < n; i++) {
                 const col = isV ? i : (n - 1) - i;
-                if (col !== 0) this.spawn(x - (space * col), baseY, name, bullets, scene);
-                this.spawn(x + (space * col), baseY, name, pattern, bullets, scene);
+                if (col !== 0) this.spawn(x - (size * col), baseY, name, bullets, scene);
+                this.spawn(x + (size * col), baseY, name, pattern, bullets, scene);
                 yield* waitForTime(0.5);
             }
         }
         const sideform = function* (isLeft = true) {
             for (let i = 0; i < n; i++) {
-                this.spawn(LR(isLeft), game.height * 0.2 + space * i, name, pattern, bullets, scene);
+                this.spawn(LR(isLeft), size + size * i, name, pattern, bullets, scene);
                 yield* waitForTime(0.25);
             }
         }
         const randomform = function* (isTop = true) {
-            const loopMax = Util.random(n, 1);
-            const max = Math.floor(isTop ? (game.width / space) - 1 : (game.height * 0.6) / space);
-            const spawner = isTop ? (pos) => this.spawn(space * (pos + 1), baseY, name, pattern, bullets, scene) : (pos) => this.spawn(LR(Boolean(Util.random(1))), space * (pos + 1), name, pattern, bullets, scene);
-            for (let i = 0; i < loopMax; i++) {
-                const poss = Util.randomArray(max, Util.random(Math.min(n, max), 1));
-                for (const pos of poss) {
-                    spawner(pos);
+            const max = Math.floor(isTop ? (game.width / size) - 1 : (game.height * 0.6) / size);
+            const spawner = isTop ? (p) => this.spawn(size * (p + 1), baseY, name, pattern, bullets, scene) : (p) => this.spawn(LR(Boolean(Util.random(1))), size * (p + 1), name, pattern, bullets, scene);
+                const ps = Util.randomArray(max, Util.random(Math.min(n, max), 1));
+                for (const p of ps) {
+                    spawner(p);
                     const wait = Util.random(n);
                     if (wait) yield* waitForTime(wait * 0.05);
                 }
-                yield* waitForTime(1 * Util.random(n, 1));
-            }
         }
         if (delay > 0) yield* waitForTime(delay);
         switch (type) {
@@ -1276,7 +1272,7 @@ class Baddies extends Mono {//敵キャラ
                 }
                 break;
             case 'abrest':
-                for (let i = 0; i < n; i++)this.spawn(x + (space * i), baseY, name, pattern, bullets, scene);
+                for (let i = 0; i < n; i++)this.spawn(x + (size * i), baseY, name, pattern, bullets, scene);
                 break;
             case 'topsingle':
                 this.spawn(x, baseY, name, pattern, bullets, scene);
@@ -1300,7 +1296,7 @@ class Baddies extends Mono {//敵キャラ
             if (user.pos.bottom < 0) {
                 if (user.pos.right < 0) {
 
-                //} else if (user.pos.) {
+                    //} else if (user.pos.) {
 
                 }
 
