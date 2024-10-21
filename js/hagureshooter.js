@@ -258,7 +258,6 @@ class Util {//便利メソッド詰め合わせ
     static randomTake = (arr, num) => Util.shiffle([...arr]).slice(0, num);
     static randomArray = (range, length) => Util.shiffledArray(range).slice(0, length);
     static isGenerator = (obj) => obj && typeof obj.next === 'function' && typeof obj.throw === 'function';
-
     static isImageFile = (file) => /\.(jpg|jpeg|png|gif)$/i.test(file)
 }
 class Rect {//矩形
