@@ -1219,13 +1219,11 @@ class Baddies extends Mono {//敵キャラ
         super(new Child());
         const creator = () => new Mono(new State(), new Move(), new Moji(), new Collision(), new Unit());
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, creator);
-        this.spawnType = { top: 0, left: 1, right: 2, leftcorner: 3, rightcorner: 4, };
-        Object.freeze(this.spawnType);
     }
-    spawn(x, y, name, spawnType, pattern, bullets, scene) {
+    spawn(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
         const baddie = this.child.pool(name);
-        baddie.state.start(this.routines[data.routine](baddie, spawnType, pattern, bullets, scene));
+        baddie.state.start(this.routines[data.routine](baddie, pattern, bullets, scene));
         baddie.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         baddie.collision.set(baddie.pos.width, baddie.pos.height);
         baddie.unit.setHp(data.hp);
@@ -1238,29 +1236,24 @@ class Baddies extends Mono {//敵キャラ
         const baseR = game.width + size;
         const LR = (isR) => isR ? baseR : baseL;
         const baseY = -size
-        const spawnTypeSide = (isR, isCorner) => isCorner ? isR ? this.spawnType.rightcorner : this.spawnType.rightcorner : isR ? this.spawnType.right : this.spawnType.left;
         const vform = function* (isReverse = false) {
             for (let i = 0; i < n; i++) {
                 const col = isReverse ? (n - 1) - i : i;
-                if (col !== 0) this.spawn(x - (size * col), baseY, baddieName, this.posName.top, bullets, scene);
-                this.spawn(x + (size * col), baseY, baddieName, this.posName.top, pattern, bullets, scene);
+                if (col !== 0) this.spawn(x - (size * col), baseY, baddieName, bullets, scene);
+                this.spawn(x + (size * col), baseY, baddieName, pattern, bullets, scene);
                 yield* waitForTime(0.5);
             }
         }
         const sideform = function* (isR = false, isCorner = false) {
             let y2 = isCorner ? baseY : y;
             for (let i = 0; i < n; i++) {
-                this.spawn(LR(isR), y2 + size + (size * i), baddieName, pattern, spawnTypeSide(isR, isCorner), bullets, scene);
+                this.spawn(LR(isR), y2 + size + (size * i), baddieName, pattern, bullets, scene);
                 yield* waitForTime(0.25);
             }
         }
         const randomform = function* (isSide = false) {
             const max = Math.floor(isSide ? (game.height * 0.6) / size : (game.width / size) - 1);
-            const spawner = isSide ? (p) => {
-                const isR = Boolean(Util.random(1));
-                this.spawn(LR(isR), size * (p + 1), baddieName, spawnTypeSide(isR, false), pattern, bullets, scene)
-            }
-                : (p) => this.spawn(size * (p + 1), baseY, baddieName, this.posName.top, pattern, bullets, scene);
+            const spawner = isSide ? (p) => this.spawn(LR(Boolean(Util.random(1))), size * (p + 1), baddieName, pattern, bullets, scene) : (p) => this.spawn(size * (p + 1), baseY, baddieName, pattern, bullets, scene);
             const ps = Util.randomArray(max, Util.random(Math.min(n, max), 1));
             for (const p of ps) {
                 spawner(p);
@@ -1278,15 +1271,15 @@ class Baddies extends Mono {//敵キャラ
                 break;
             case 'trail':
                 for (let i = 0; i < n; i++) {
-                    this.spawn(x, baseY, baddieName, this.spawnType.top, pattern, bullets, scene);
+                    this.spawn(x, baseY, baddieName, pattern, bullets, scene);
                     yield* waitForTime(0.5);
                 }
                 break;
             case 'abrest':
-                for (let i = 0; i < n; i++)this.spawn(x + (size * i), baseY, baddieName, this.spawnType.top, pattern, bullets, scene);
+                for (let i = 0; i < n; i++)this.spawn(x + (size * i), baseY, baddieName, pattern, bullets, scene);
                 break;
             case 'topsingle':
-                this.spawn(x, baseY, baddieName, this.spawnType.top, pattern, bullets, scene);
+                this.spawn(x, baseY, baddieName, pattern, bullets, scene);
                 break;
             case 'randomtop':
                 yield* randomform.bind(this)();
@@ -1308,99 +1301,33 @@ class Baddies extends Mono {//敵キャラ
                 break;
         }
     }
-    _spawnPosition(user) {
-        let result = 0;//top
-        let isMoveVirtical = false;
-        if (user.pos.bottom < 0) {
-            if (user.pos.right < 0) {
-                result = 1;//leftcorner
-            } else if (user.pos.left >= game.width) {
-                result = 2;//rightcorner
-            } else {
-                isMoveVirtical = true;
-            }
-        } else if (user.pos.right < 0) {
-            result = 3;//left
-        } else if (user.pos.left >= game.width) {
-            result = 4;//right
-        }
-        return [result, isMoveVirtical];
-    }
-    test(user, spawnType, pattern, bullets, scene) {
-        const moveSpeed=100;
-        let isMoveVirtical = false;
-        switch (spawnType) {
-            case this.spawnType.top:
-                isMoveVirtical = true;
-                user.move.set(0, moveSpeed);
-                break;
-            case this.spawnType.left:
-
-                break;
-            case this.spawnType.right:
-                break;
-            case this.spawnType.leftcorner:
-                {
-                const [x, y] = Util.normalize(game.width, game.height);
-                user.move.set(x * moveSpeed, y * moveSpeed);
-                }
-                break;
-            case this.spawnType.rightcorner:
-                const [x, y] = Util.normalize(-game.width, game.height);
-                user.move.set(x * moveSpeed, y * moveSpeed);
-                break;
-
-        }
-    }
-    routineBasic(user, size, moveSpeed, shot) {
+    *routineBasic(user, size, moveSpeed, shot) {
         let isMoveVirtical = false;
         const isL = user.pos.right < 0
-        if (user.pos.bottom < 0) {//画面上
+        if (user.pos.bottom < 0) {//上
             if (!isL && user.pos.left < game.width) {
                 user.move.set(0, moveSpeed);
                 isMoveVirtical = true;
-            } else {//画面隅      
+            } else {//隅      
                 const [x, y] = Util.normalize(isL ? game.width : -game.width, game.height);
                 user.move.set(x * moveSpeed, y * moveSpeed);
             }
         } else if (isL || user.pos.left > game.width) {//左右
-            const vias = 0.0375;
-            user.move.set(isL ? moveSpeed : -moveSpeed, 0, 1 - vias);
-            yield * waitForFrag(() => user.pos.x >= game.width * 0.4);
-            const shotid = user.state.start(shot());
-            user.move.vc = 1;
-            yield * waitForFrag(() => user.pos.x >= game.width * 0.6);
-            user.state.stop(shotid);
-            user.move.vc = 1 + vias;
+            user.move.set(isL? moveSpeed:-moveSpeed,0);
         }
         if (isMoveVirtical) {
             user.move.setEase(size / 8, 0, -1, { speed: 480 / (size / 40) });
         } else {
             user.move.setEase(0, size / 8, -1, { speed: 480 / (size / 40) });
         }
+        while (true) {
+            yield* user.state.startAndWait(shot());
+        }
     }
     routines = {
         zako1: function* (user, pattern, bullets, scene) {
             const size = user.pos.width;
-            const moveSpeed = 100;
-            let isMoveVirtical = false;
-            if (user.pos.bottom < 0) {
-                if (user.pos.right < 0) {
-                    const [x, y] = Util.normalize(game.width, game.height);
-                    user.move.set(x * moveSpeed, y * moveSpeed);
-                } else if (user.pos.left > game.width) {
-                    const [x, y] = Util.normalize(-game.width, game.height);
-                    user.move.set(x * moveSpeed, y * moveSpeed);
-                } else {
-                    user.move.set(0, moveSpeed);
-                    isMoveVirtical = true;
-                }
-            }
-            if (isMoveVirtical) {
-                user.move.setEase(size / 8, 0, -1, { speed: 480 / (size / 40) });
-            } else {
-                user.move.setEase(0, size / 8, -1, { speed: 480 / (size / 40) });
-            }
+            const moveSpeed = 100;            
             const shot1 = function* () {
                 while (true) {
                     yield undefined;
@@ -1408,9 +1335,7 @@ class Baddies extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
-            while (true) {
-                yield* user.state.startAndWait(shot1());
-            }
+            yield* this.routineBasic(user,size,moveSpeed,shot1);
         },
         zako2: function* (user, pattern, bullets, scene) {
             const shot1 = function* () {
