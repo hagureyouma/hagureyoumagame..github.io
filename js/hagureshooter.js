@@ -839,7 +839,6 @@ class BaddieData {//敵キャラデータ
     }
 }
 export const datas = {//ゲームデータ
-    spawnType: { within: 0, top: 1, leftcorner: 2, rightcorner: 3, left: 4, right: 5 },
     baddies: {
         obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1'),
         crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1'),
@@ -959,8 +958,8 @@ class ScenePlay extends Mono {//プレイ画面
         this.child.add(this.playerside = new Mono(new Child()));
         this.child.add(this.playerbullets = new BulletBox());
         //敵キャラ        
-        this.child.add(this.baddies = new Baddies(this, this.baddiesbullets = new BulletBox()));
-        this.child.add(this.baddiesbullets);
+        this.child.add(this.baddies = new Baddies());
+        this.child.add(this.baddiesbullets = new BulletBox());
         //パーティクル
         this.child.add(this.effect = new Tsubu());
         this.effect.child.drawlayer = 'effect';
@@ -1087,9 +1086,9 @@ class ScenePlay extends Mono {//プレイ画面
 
 
             // this.baddies.spawn(game.width * 0.5, -50, 'bigcrow', undefined, this.baddiesbullets, this);
-            this.state.start(this.baddies.formation.bind(this.baddies)(this.baddies.formName.v, game.width * 0.5, 0, 4, 'crow', undefined,this.baddiesbullets,this, 1));
+            this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.delta, game.width * 0.5, 0, 4, 'crow', 0, this.baddiesbullets, this, 1));
             // this.state.start(this.baddies.formation.bind(this.baddies)('randomside', 0, 0, 4, 'dove', undefined, this.baddiesbullets, this));
-            yield* waitForTime(999);
+            yield* waitForTime(3);
 
             // this.state.start(this.baddies.formation.side.bind(this.baddies)(false, 4, 'dove', undefined, this.baddiesbullets, this));
             // this.state.start(this.baddies.formation.side.bind(this.baddies)(true, 4, 'dove', undefined, this.baddiesbullets, this, 1));
@@ -1219,55 +1218,49 @@ class Player extends Mono {//プレイヤーキャラ
     }
 }
 class Baddies extends Mono {//敵キャラ管理
-    constructor(scene, bullets) {
+    constructor() {
         super(new Child());
-        this.scene = scene;
-        this.bullets = bullets;
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Baddie());
         this.formName = { v: 0, delta: 1, trail: 2, abrest: 3, topsingle: 4, randomtop: 5, left: 6, right: 7, randomside: 8, lefttop: 9, righttop: 10 };
         Object.freeze(this.formName);
     }
-    spawn (x, y, name, pattern) {
-        this.child.pool(name).set(x, y, name, pattern, this.bullets, this.scene);  
-    }  
-    *formation(type, x, y, n, name, pattern,bullets,scene,delay = 0) {
+    spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, bullets, scene);
+    *formation(type, x, y, n, name, pattern, bullets, scene, delay = 0) {
         if (delay > 0) yield* waitForTime(delay);
-        const p = { x: x, y: y, size: datas.baddies[name].size, n: n, name: name, pattern: pattern};
-        const baseY = (size) => -(size * 0.5);
-        const vform = function* (p, isReverse = false) {
-            const y = baseY(p.size);
-            for (let i = 0; i < p.n; i++) {
-                const col = isReverse ? (p.n - 1) - i : i;
-                //if (col !== 0) this.spawn(p.x - (p.size * col), y, p.name, p.pattern);
-                this.spawn(p.x + (p.size * col), y, p.name, p.pattern,bullets,scene);
+        const size = datas.baddies[name].size;
+        const baseY = -size;
+        const spawn = (x, y) => this.spawn(x, y, name, pattern, bullets, scene);
+        const vform = function* (isReverse = false) {
+            for (let i = 0; i < n; i++) {
+                const col = isReverse ? (n - 1) - i : i;
+                if (col !== 0) spawn(x - (size * col), baseY);
+                spawn(x + (size * col), baseY);
                 yield* waitForTime(0.5);
             }
         }
-        const trailform = function* (p) {
-            const by = baseY(p.size);
-            for (let i = 0; i < p.n; i++) {
-                this.spawn(p.x, by, p.name, p.pattern);
+        const trailform = function* () {
+            for (let i = 0; i < n; i++) {
+                spawn(x, baseY);
                 yield* waitForTime(0.5);
             }
         }
-        const abrestform = function* (p) {
-            const by = baseY(p.size);
-            for (let i = 0; i < p.n; i++) {
-                this.spawn(p.x + (p.size * i), by, p.name, p.pattern);
+        const abrestform = function* () {
+            for (let i = 0; i < n; i++) {
+                spawn(x + (size * i), baseY);
             }
         }
-        const sideform = function* (p, isR = false, isCorner = false) {
-            const x = isR ? -p.size : game.width + p.size;
-            const by = isCorner ? baseY(p.size) : p.y;
-            for (let i = 0; i < p.n; i++) {
-                this.spawn(x, by + p.size + (p.size * i), p.name, p.pattern);
+        const sideform = function* (isR = false, isCorner = false) {
+            const x = isR ? -size : game.width + size;
+            const by = isCorner ? baseY : y;
+            for (let i = 0; i < n; i++) {
+                spawn(x, by + size + (size * i));
                 yield* waitForTime(0.25);
             }
         }
-        const randomform = function* (p, isSide = false) {
-            const X = (isR) => isR ? -p.size : game.width + p.size;
+        const randomform = function* (isSide = false) {
+            const X = (isR) => isR ? -size : game.width + size;
             const max = Math.floor(isSide ? (game.height * 0.6) / size : (game.width / size) - 1);
-            const spawner = isSide ? (p) => this.spawn(X(Boolean(Util.random(1))), size * (p + 1), p.name, p.pattern) : (p) => this.spawn(size * (p + 1), baseY(size), p.name, p.pattern);
+            const spawner = isSide ? (p) => spawn(X(Boolean(Util.random(1))), size * (p + 1)) : (p) => spawn(size * (p + 1), baseY);
             const ps = Util.randomArray(max, Util.random(Math.min(n, max), 1));
             for (const p of ps) {
                 spawner(p);
@@ -1277,48 +1270,49 @@ class Baddies extends Mono {//敵キャラ管理
         }
         switch (type) {
             case this.formName.topsingle:
-                this.spawn(p.x, baseY(p.size));
+                spawn(x, baseY);
                 break;
             case this.formName.v:
-                yield* vform.bind(this)(p);
+                yield* vform();
                 break;
             case this.formName.delta:
-                yield* vform(p);
+                yield* vform(true);
                 break;
             case this.formName.trail:
-                yield trailform(p);
+                yield trailform();
                 break;
             case this.formName.abrest:
-                abrestform(p);
+                abrestform();
                 break;
             case this.formName.left:
-                yield* sideform(p);
+                yield* sideform();
                 break;
             case this.formName.right:
-                yield* sideform(p, true);
+                yield* sideform(true);
                 break;
             case this.formName.lefttop:
-                yield* sideform(p, false, true);
+                yield* sideform(false, true);
                 break;
             case this.formName.righttop:
-                yield* sideform(p, true, true);
+                yield* sideform(true, true);
                 break;
             case this.formName.randomtop:
-                yield* randomform(p);
+                yield* randomform();
                 break;
             case this.formName.randomside:
-                yield* randomform(p, true);
+                yield* randomform(true);
                 break;
         }
     }
 }
-class Baddie extends Mono {//敵キャラ    
+class Baddie extends Mono {//敵キャラ   
+    static spawnType = { within: 0, top: 1, leftcorner: 2, rightcorner: 3, left: 4, right: 5 }
     constructor() {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
-        this.state.start(this.routines[data.routine](this, pattern, bullets, scene));
+        this.state.start(this.routines[data.routine].call(this, pattern, bullets, scene));
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.setHp(data.hp);
@@ -1326,71 +1320,77 @@ class Baddie extends Mono {//敵キャラ
         return this;
     }
     setAnime(isVirtical) {
-        const size = user.pos.width;
+        const size = this.pos.width;
         if (isVirtical) {
-            user.move.setEase(size / 8, 0, -1, { speed: 480 / (size / 40) });
+            this.move.setEase(size / 8, 0, -1, { speed: 480 / (size / 40) });
         } else {
-            user.move.setEase(0, size / 8, -1, { speed: 480 / (size / 40) });
+            this.move.setEase(0, size / 8, -1, { speed: 480 / (size / 40) });
         }
     }
-    whichSpawnType(user) {
-        let result = datas.spawnType.within;
+    whichSpawnType() {
+        let result = Baddie.spawnType.within;
         let isMoveVirtical = false;
-        if (user.pos.bottom < 0) {
-            if (user.pos.right < 0) {
-                result = datas.spawnType.leftcorner;
-            } else if (user.pos.left >= game.width) {
-                result = datas.spawnType.rightcorner;
+        if (this.pos.bottom < 0) {
+            if (this.pos.right < 0) {
+                result = Baddie.spawnType.leftcorner;
+            } else if (this.pos.left >= game.width) {
+                result = Baddie.spawnType.rightcorner;
             } else {
-                result = datas.spawnType.top;
+                result = Baddie.spawnType.top;
                 isMoveVirtical = true;
             }
-        } else if (user.pos.right < 0) {
-            result = datas.spawnType.left;
-        } else if (user.pos.left >= game.width) {
-            result = datas.spawnType.right;
+        } else if (this.pos.right < 0) {
+            result = Baddie.spawnType.left;
+        } else if (this.pos.left >= game.width) {
+            result = Baddie.spawnType.right;
         }
         return [result, isMoveVirtical];
     }
-    *routineBasic(user, moveSpeed, shot) {
-        const [spawnType, isAnimeVirtical] = user.whichSpawnType(user);
-        this.setAnime(isAnimeVirtical);
+    *routineBasic(pattern, moveSpeed, shot) {
+        const [spawnType, isAnimeVirtical] = this.whichSpawnType();
         let x, y;
         switch (spawnType) {
-            case datas.spawnType.within:
+            case Baddie.spawnType.within:
                 break;
-            case datas.spawnType.top:
-                user.move.set(0, moveSpeed);
+            case Baddie.spawnType.top:
+                this.move.set(0, moveSpeed);
+                switch (pattern) {
+                    case 0:
+                        break;
+                    case 1:
+                        this.setAnime(isAnimeVirtical);
+                        break;
+                }
                 break;
-            case datas.spawnType.leftcorner:
+            case Baddie.spawnType.leftcorner:
                 [x, y] = Util.normalize(game.width, game.height);
-                user.move.set(x * moveSpeed, y * moveSpeed);
+                this.move.set(x * moveSpeed, y * moveSpeed);
                 break;
-            case datas.spawnType.rightcorner:
+            case Baddie.spawnType.rightcorner:
                 [x, y] = Util.normalize(-game.width, game.height);
-                user.move.set(x * moveSpeed, y * moveSpeed);
+                this.move.set(x * moveSpeed, y * moveSpeed);
                 break;
-            case datas.spawnType.left:
-                user.move.set(moveSpeed, 0);
+            case Baddie.spawnType.left:
+                this.move.set(moveSpeed, 0);
                 break;
-            case datas.spawnType.right:
-                user.move.set(-moveSpeed, 0);
+            case Baddie.spawnType.right:
+                this.move.set(-moveSpeed, 0);
                 break;
         }
         while (true) {
-            yield* user.state.startAndWait(shot());
+            yield* this.state.startAndWait(shot.call(this));
         }
     }
     routines = {
-        zako1: function* (user, pattern, bullets, scene) {
+        zako1: function* (pattern, bullets, scene) {
             const moveSpeed = 100;
             const shot1 = function* () {
                 while (true) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { color: 'red' });
+                    bullets.mulitWay(this.pos.x, this.pos.y, { color: 'red' });
                     yield* waitForTime(2);
                 }
             }
-            yield* this.routineBasic(user, moveSpeed, shot1);
+            yield* this.routineBasic(pattern, moveSpeed, shot1);
         },
         zako2: function* (user, pattern, bullets, scene) {
             const moveSpeed = 600;
