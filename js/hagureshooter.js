@@ -991,18 +991,18 @@ class ScenePlay extends Mono {//プレイ画面
 
         while (true) {
             // const baddie = baddies[Util.random(baddies.length)];
-            const baddie='crow';
-            const data = datas.baddies[baddie];
-            const form=data.form[Util.random(data.form.length)];
-            switch (Baddies.form.v) {
-                case Baddies.form.v:
-                    const max = Math.floor(game.width / data.size + 1);
-                    const range = game.width - (data.size*max);
-                    const w = Util.random(range) + (range * 0.5);
-            this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.v, w, 0, 3, data.name, 0, this.baddiesbullets, this, 0));            
+            // const baddie='crow';
+            // const data = datas.baddies[baddie];
+            // const form=data.form[Util.random(data.form.length)];
+            // switch (Baddies.form.v) {
+            //     case Baddies.form.v:
+            //         const max = Math.floor(game.width / data.size + 1);
+            //         const range = game.width - (data.size*max);
+            //         const w = Util.random(range) + (range * 0.5);
+            // this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.v, w, 0, 3, data.name, 0, this.baddiesbullets, this, 0));            
 
-                    break;
-            }
+            //         break;
+            // }
             // this.baddies.spawn(game.width * 0.5, -50, 'bigcrow', undefined, this.baddiesbullets, this);
             //this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.delta, game.width * 0.5, 0, 3, 'crow', 0, this.baddiesbullets, this, 0));            
             //this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.left, 0, 0, 4, 'dove', 0, this.baddiesbullets, this, 0));
@@ -1150,18 +1150,16 @@ class Baddies extends Mono {//敵キャラ管理
         const size = datas.baddies[name].size;
         const baseY = -size;
         const spawn = (x, y) => this.spawn(x, y, name, pattern, bullets, scene);
-        const vform = function* (isReverse = false) {
+        const vform = (isReverse = false) => {
             for (let i = 0; i < n; i++) {
                 const col = isReverse ? (n - 1) - i : i;
-                if (col !== 0) spawn(x - (size * col), baseY);
-                spawn(x + (size * col), baseY);
-                yield* waitForTime(0.5);
+                if (col !== 0) spawn(x - (size * col), baseY * i);
+                spawn(x + (size * col), baseY * i);
             }
         }
-        const trailform = function* () {
+        const trailform = () => {
             for (let i = 0; i < n; i++) {
-                spawn(x, baseY);
-                yield* waitForTime(0.5);
+                spawn(x, baseY * i);
             }
         }
         const abrestform = function* () {
@@ -1171,9 +1169,9 @@ class Baddies extends Mono {//敵キャラ管理
         }
         const sideform = function* (isR = false) {
             const x = isR ? game.width + size : -size;
+            const w = Math.sign(x) * size * 0.25;
             for (let i = 0; i < n; i++) {
-                spawn(x, y + (size * i));
-                yield* waitForTime(0.25);
+                spawn(x + (w * i), y + (size * i));
             }
         }
         const randomform = function* (isSide = false) {
