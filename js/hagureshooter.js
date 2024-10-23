@@ -17,6 +17,7 @@
 }
 'use strict';
 console.clear();
+//ゲームエンジンのクラス
 class Game {//ゲーム本体
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
@@ -88,6 +89,7 @@ class Game {//ゲーム本体
     popScene = () => this.root.child.pop();
     setState = (state) => this.root.state.start(state);
     isOutOfRange = (rect) => !this.screenRect.isIntersect(rect);
+    isWithin = (rect) => !this.screenRect.isOverflow(rect);
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
     get sec() { return this.time / 1000; }
 }
@@ -278,9 +280,12 @@ class Rect {//矩形
         this.height = height;
         return this;
     }
-    isIntersect = (rect) => rect.x + rect.width > this.x && this.x + this.width > rect.x && rect.y + rect.height > this.y && this.y + this.height > rect.y;
+    get right() { return this.x + this.width }
+    get bottom() { return this.y + this.height }
+    isIntersect = (rect) => rect.right > this.x && this.right > rect.x && rect.bottom > this.y && this.bottom > rect.y;
+    isOverflow = (rect) => rect.x < this.x || rect.right > this.right || rect.y < this.y || rect.bottom > this.bottom;
 }
-class Mono {//ゲームオブジェクト
+class Mono {//ゲームオブジェクトc
     constructor(...args) {
         this.isExist = this.isActive = true;
         this.isRemoved = false;
@@ -786,105 +791,6 @@ class Menu extends Mono {//メニュー
     current = () => this.index === -1 ? Menu.cancel : this.child.objs[this.index + this.indexOffset].moji.text;
     static get cancel() { return 'cancel' };
 }
-export const cfg = {//ゲームの設定
-    layer: ['effect', 'ui'],
-    font: {
-        default: { name: 'Kaisei Decol', url: 'https://fonts.googleapis.com/css2?family=kaisei+decol&display=swap', custom: false },
-        emoji: { name: 'FontAwesome', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', custom: true }
-    },
-    fontSize: {
-        normal: 20,
-        medium: 30,
-        large: 35,
-        big: 40,
-    },
-    theme: {
-        text: '#ffffff',
-        highlite: 'yellow'
-    },
-    input: {
-        repeatWaitFirst: 0.25,
-        repeatWait: 0.125,
-    }
-}
-let text = {//ゲームのテキスト
-    title: 'シューティングゲーム', title2: 'のようなもの', presskey: 'Zキーを押してね',
-    explanation1: '操作方法：↑↓←→ 選択、移動',
-    explanation2: 'Z 決定、攻撃　X 取消、中断',
-    start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
-    pause: 'ポーズ', resume: 'ゲームを続ける', restart: '最初からやり直す', returntitle: 'タイトルに戻る',
-    stageclear: 'ステージ　クリアー', total: '合計', stage: 'ステージ', time: 'タイム', point: 'スコア', ko: '撃破数',
-    gameover: 'ゲームオーバー', continue: 'コンティニュー'
-}
-const EMOJI = {//Font Awesomeの絵文字のUnicode
-    GHOST: 'f6e2',
-    CAT: 'f6be',
-    CROW: 'f520',
-    HOUSE: 'e00d',
-    TREE: 'f1bb',
-    DOVE: 'f4ba',
-    POO: 'f2fe',
-    CROWN: 'f521'
-}
-Object.freeze(EMOJI);
-class BaddieData {//敵キャラデータ
-    constructor(name, char, color, size, hp, point, routine) {
-        this.name = name;
-        this.char = char;
-        this.color = color;
-        this.size = size;
-        this.hp = hp;
-        this.point = point;
-        this.routine = routine;
-    }
-}
-export const datas = {//ゲームデータ
-    baddies: {
-        obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1'),
-        crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1'),
-        dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2'),
-        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3'),
-        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1')
-    },
-    player: {
-        moveSpeed: 300,
-        bulletSpeed: 400,
-        firelate: 1 / 20,
-    },
-    game: {
-        highscoreListMax: 10
-    }
-};
-// class SpawnData {
-//     constructor(time, x, y, name) {
-//         this.time = time;
-//         this.x = x;
-//         this.y = y;
-//         this.name = name;
-//     }
-// }
-// gameData.stages = [];
-// const stage1 = [];
-// gameData.stages.push(stage1);
-// stage1.push(new SpawnData(2, 160, 50, 'obake'));
-// stage1.push(new SpawnData(2, 100, 50, 'obake'));
-// stage1.push(new SpawnData(3, 150, 50, 'obake'));
-// stage1.push(new SpawnData(4, 200, 50, 'obake'));
-class scoreData {//成績データ
-    constructor(from) {
-        this.stage = from?.stage || 0;
-        this.time = from?.time || 0;
-        this.point = from?.point || 0;
-        this.ko = from?.ko || 0;
-    }
-}
-export const shared = {//共用変数
-    playdata: {
-        total: new scoreData(),
-        backup: new scoreData()
-    },
-    highscores: []
-}
 class Watch extends Mono {//デバッグ用変数表示
     constructor() {
         super(new Pos(), new Child());
@@ -896,6 +802,7 @@ class Watch extends Mono {//デバッグ用変数表示
         l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5) });
     }
 }
+//ここからゲーム固有のクラス
 class SceneTitle extends Mono {//タイトル画面
     constructor() {
         super(new Child());
@@ -1083,12 +990,25 @@ class ScenePlay extends Mono {//プレイ画面
         // }
 
         while (true) {
+            // const baddie = baddies[Util.random(baddies.length)];
+            const baddie='crow';
+            const data = datas.baddies[baddie];
+            const form=data.form[Util.random(data.form.length)];
+            switch (Baddies.form.v) {
+                case Baddies.form.v:
+                    const max = Math.floor(game.width / data.size + 1);
+                    const range = game.width - (data.size*max);
+                    const w = Util.random(range) + (range * 0.5);
+            this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.v, w, 0, 3, data.name, 0, this.baddiesbullets, this, 0));            
 
-
+                    break;
+            }
             // this.baddies.spawn(game.width * 0.5, -50, 'bigcrow', undefined, this.baddiesbullets, this);
-            this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.delta, game.width * 0.5, 0, 4, 'crow', 0, this.baddiesbullets, this, 1));
+            //this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.delta, game.width * 0.5, 0, 3, 'crow', 0, this.baddiesbullets, this, 0));            
+            //this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.left, 0, 0, 4, 'dove', 0, this.baddiesbullets, this, 0));
+            //this.state.start(this.baddies.formation.call(this.baddies, this.baddies.formName.topsingle, game.width * 0.25, 0, 1, 'bigcrow', 0, this.baddiesbullets, this, 0));
             // this.state.start(this.baddies.formation.bind(this.baddies)('randomside', 0, 0, 4, 'dove', undefined, this.baddiesbullets, this));
-            yield* waitForTime(3);
+            yield* waitForTime(4);
 
             // this.state.start(this.baddies.formation.side.bind(this.baddies)(false, 4, 'dove', undefined, this.baddiesbullets, this));
             // this.state.start(this.baddies.formation.side.bind(this.baddies)(true, 4, 'dove', undefined, this.baddiesbullets, this, 1));
@@ -1218,11 +1138,11 @@ class Player extends Mono {//プレイヤーキャラ
     }
 }
 class Baddies extends Mono {//敵キャラ管理
+    static form = { v: 0, delta: 1, trail: 2, abrest: 3, topsingle: 4, left: 5, right: 6, randomtop: 7, randomside: 8 };
     constructor() {
         super(new Child());
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Baddie());
-        this.formName = { v: 0, delta: 1, trail: 2, abrest: 3, topsingle: 4, randomtop: 5, left: 6, right: 7, randomside: 8, lefttop: 9, righttop: 10 };
-        Object.freeze(this.formName);
+        Object.freeze(Baddies.form);
     }
     spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, bullets, scene);
     *formation(type, x, y, n, name, pattern, bullets, scene, delay = 0) {
@@ -1249,16 +1169,15 @@ class Baddies extends Mono {//敵キャラ管理
                 spawn(x + (size * i), baseY);
             }
         }
-        const sideform = function* (isR = false, isCorner = false) {
-            const x = isR ? -size : game.width + size;
-            const by = isCorner ? baseY : y;
+        const sideform = function* (isR = false) {
+            const x = isR ? game.width + size : -size;
             for (let i = 0; i < n; i++) {
-                spawn(x, by + size + (size * i));
+                spawn(x, y + (size * i));
                 yield* waitForTime(0.25);
             }
         }
         const randomform = function* (isSide = false) {
-            const X = (isR) => isR ? -size : game.width + size;
+            const X = (isR) => isR ? game.width + size : -size;
             const max = Math.floor(isSide ? (game.height * 0.6) / size : (game.width / size) - 1);
             const spawner = isSide ? (p) => spawn(X(Boolean(Util.random(1))), size * (p + 1)) : (p) => spawn(size * (p + 1), baseY);
             const ps = Util.randomArray(max, Util.random(Math.min(n, max), 1));
@@ -1269,50 +1188,44 @@ class Baddies extends Mono {//敵キャラ管理
             }
         }
         switch (type) {
-            case this.formName.topsingle:
+            case Baddies.form.topsingle:
                 spawn(x, baseY);
                 break;
-            case this.formName.v:
+            case Baddies.form.v:
                 yield* vform();
                 break;
-            case this.formName.delta:
+            case Baddies.form.delta:
                 yield* vform(true);
                 break;
-            case this.formName.trail:
+            case Baddies.form.trail:
                 yield trailform();
                 break;
-            case this.formName.abrest:
+            case Baddies.form.abrest:
                 abrestform();
                 break;
-            case this.formName.left:
+            case Baddies.form.left:
                 yield* sideform();
                 break;
-            case this.formName.right:
+            case Baddies.form.right:
                 yield* sideform(true);
                 break;
-            case this.formName.lefttop:
-                yield* sideform(false, true);
-                break;
-            case this.formName.righttop:
-                yield* sideform(true, true);
-                break;
-            case this.formName.randomtop:
+            case Baddies.form.randomtop:
                 yield* randomform();
                 break;
-            case this.formName.randomside:
+            case Baddies.form.randomside:
                 yield* randomform(true);
                 break;
         }
     }
 }
 class Baddie extends Mono {//敵キャラ   
-    static spawnType = { within: 0, top: 1, leftcorner: 2, rightcorner: 3, left: 4, right: 5 }
+    static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
-        this.state.start(this.routines[data.routine].call(this, pattern, bullets, scene));
+        this.state.start(this.routines[data.routine](this, pattern, bullets, scene));
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.setHp(data.hp);
@@ -1322,7 +1235,7 @@ class Baddie extends Mono {//敵キャラ
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
-            this.move.setEase(size / 8, 0, -1, { speed: 480 / (size / 40) });
+            this.move.setEase(size, 0, -1, { speed: 480 / (size / 40) });
         } else {
             this.move.setEase(0, size / 8, -1, { speed: 480 / (size / 40) });
         }
@@ -1330,97 +1243,82 @@ class Baddie extends Mono {//敵キャラ
     whichSpawnType() {
         let result = Baddie.spawnType.within;
         let isMoveVirtical = false;
-        if (this.pos.bottom < 0) {
-            if (this.pos.right < 0) {
-                result = Baddie.spawnType.leftcorner;
-            } else if (this.pos.left >= game.width) {
-                result = Baddie.spawnType.rightcorner;
-            } else {
-                result = Baddie.spawnType.top;
-                isMoveVirtical = true;
-            }
-        } else if (this.pos.right < 0) {
+        if (this.pos.right < 0) {
             result = Baddie.spawnType.left;
         } else if (this.pos.left >= game.width) {
             result = Baddie.spawnType.right;
+        } else if (this.pos.bottom < 0) {
+            result = Baddie.spawnType.top;
+            isMoveVirtical = true;
         }
         return [result, isMoveVirtical];
     }
-    *routineBasic(pattern, moveSpeed, shot) {
-        const [spawnType, isAnimeVirtical] = this.whichSpawnType();
-        let x, y;
+    *routineBasic(user, pattern, moveSpeed, shot) {
+        user.state.start(function* () {
+            yield* waitForFrag(() => game.isWithin(user.pos.rect));
+            yield* shot();
+        }());
+        const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
                 break;
             case Baddie.spawnType.top:
-                this.move.set(0, moveSpeed);
+                user.move.set(0, moveSpeed);
                 switch (pattern) {
                     case 0:
                         break;
                     case 1:
-                        this.setAnime(isAnimeVirtical);
+                        user.setAnime(isAnimeVirtical);
                         break;
                 }
                 break;
-            case Baddie.spawnType.leftcorner:
-                [x, y] = Util.normalize(game.width, game.height);
-                this.move.set(x * moveSpeed, y * moveSpeed);
-                break;
-            case Baddie.spawnType.rightcorner:
-                [x, y] = Util.normalize(-game.width, game.height);
-                this.move.set(x * moveSpeed, y * moveSpeed);
-                break;
             case Baddie.spawnType.left:
-                this.move.set(moveSpeed, 0);
+                user.move.set(moveSpeed, 0);
                 break;
             case Baddie.spawnType.right:
-                this.move.set(-moveSpeed, 0);
+                user.move.set(-moveSpeed, 0);
                 break;
-        }
-        while (true) {
-            yield* this.state.startAndWait(shot.call(this));
         }
     }
     routines = {
-        zako1: function* (pattern, bullets, scene) {
+        zako1: function* (user, pattern, bullets, scene) {
             const moveSpeed = 100;
             const shot1 = function* () {
                 while (true) {
-                    bullets.mulitWay(this.pos.x, this.pos.y, { color: 'red' });
+                    bullets.mulitWay(user.pos.x, user.pos.y, { count: 1, color: 'red' });
                     yield* waitForTime(2);
                 }
             }
-            yield* this.routineBasic(pattern, moveSpeed, shot1);
+            yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         zako2: function* (user, pattern, bullets, scene) {
-            const moveSpeed = 600;
+            const moveSpeed = 500;
             const moveVias = 0.0375;
             const shot1 = function* () {
+                yield* waitForFrag(() => game.isWithin(user.pos.rect));
+                yield* waitForTime(Util.random(60) * game.delta);
                 while (true) {
                     bullets.mulitWay(user.pos.x, user.pos.y, { color: 'red' });
                     yield* waitForTime(2);
                 }
             }
-            const [spawnType, isAnimeVirtical] = user.whichSpawnType(user);
-            this.setAnime(isAnimeVirtical);
-            let shot1id = 0;
+            const [spawnType, isAnimeVirtical] = user.whichSpawnType();
+            user.setAnime(isAnimeVirtical);
             switch (spawnType) {
-                case datas.spawnType.left:
-                    user.move.set(-moveSpeed, 0, 1 - moveVias);
-                    yield* waitForFrag(() => user.pos.x < game.width * 0.6);
-                    shot1id = user.state.start(shot1());
-                    user.move.vc = 1;
-                    yield* waitForFrag(() => user.pos.x < game.width * 0.4);
-                    user.state.stop(shot1id);
-                    user.move.vc = 1 + moveVias;
-                    break;
-                case datas.spawnType.right:
+                case Baddie.spawnType.left:
                     user.move.set(moveSpeed, 0, 1 - moveVias);
                     yield* waitForFrag(() => user.pos.x >= game.width * 0.4);
-                    shot1id = user.state.start(shot1());
+                    user.state.start(shot1());
                     user.move.vc = 1;
                     yield* waitForFrag(() => user.pos.x >= game.width * 0.6);
-                    user.state.stop(shot1id);
+                    user.move.vc = 1 + moveVias;
+                    break;
+                case Baddie.spawnType.right:
+                    user.move.set(-moveSpeed, 0, 1 - moveVias);
+                    yield* waitForFrag(() => user.pos.x < game.width * 0.6);
+                    user.state.start(shot1());
+                    user.move.vc = 1;
+                    yield* waitForFrag(() => user.pos.x < game.width * 0.4);
                     user.move.vc = 1 + moveVias;
                     break;
                 default:
@@ -1430,22 +1328,11 @@ class Baddie extends Mono {//敵キャラ
             const moveSpeed = 50;
             const shot1 = function* () {
                 while (true) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { color: 'orange', isAim: true, tx: scene.player.pos.x, ty: scene.player.pos.y });
+                    bullets.mulitWay(user.pos.x, user.pos.y, { color: 'aqua', aim: scene.player });
                     yield* waitForTime(2);
                 }
             }
-            const [spawnType, isAnimeVirtical] = user.whichSpawnType(user);
-            switch (spawnType) {
-                case datas.spawnType.within:
-                    break;
-                case datas.spawnType.top:
-                    user.move.set(0, moveSpeed);
-                    break;
-                default:
-            }
-            while (true) {
-                yield* user.state.startAndWait(shot1());
-            }
+            yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         boss1: function* (user, bullets, scene) {
             const circleShot = function* () {
@@ -1559,16 +1446,16 @@ class BulletBox extends Mono {//弾
         bullet.brush.color = color;
         return bullet;
     }
-    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, color = 'red', isAim = false, tx = 0, ty = 0, target = undefined, aimSpeed = 0 } = {}) {
+    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0 } = {}) {
         let d = deg;
-        if (isAim) d = Util.xyToDeg(tx - x, ty - y);
+        if (aim) d = Util.xyToDeg(aim.pos.x - x, aim.pos.y - y);
         const offset = space * (count - 1) / 2;
         const result = [];
         for (let i = 0; i < count; i++) {
             const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color);
-            if (target) {
-                bullet.guided.target = target;
-                bullet.guided.aimSpeed = aimSpeed;
+            if (guided) {
+                bullet.guided.target = guided;
+                bullet.guided.aimSpeed = guidedSpeed;
                 bullet.move.vc = 1.03;
             }
         }
@@ -1678,6 +1565,106 @@ class SceneHighscore extends Mono {//ハイスコア画面
         game.popScene();
         return;
     }
+}
+export const cfg = {//ゲームの設定
+    layer: ['effect', 'ui'],
+    font: {
+        default: { name: 'Kaisei Decol', url: 'https://fonts.googleapis.com/css2?family=kaisei+decol&display=swap', custom: false },
+        emoji: { name: 'FontAwesome', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', custom: true }
+    },
+    fontSize: {
+        normal: 20,
+        medium: 30,
+        large: 35,
+        big: 40,
+    },
+    theme: {
+        text: '#ffffff',
+        highlite: 'yellow'
+    },
+    input: {
+        repeatWaitFirst: 0.25,
+        repeatWait: 0.125,
+    }
+}
+let text = {//ゲームのテキスト
+    title: 'シューティングゲーム', title2: 'のようなもの', presskey: 'Zキーを押してね',
+    explanation1: '操作方法：↑↓←→ 選択、移動',
+    explanation2: 'Z 決定、攻撃　X 取消、中断',
+    start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
+    pause: 'ポーズ', resume: 'ゲームを続ける', restart: '最初からやり直す', returntitle: 'タイトルに戻る',
+    stageclear: 'ステージ　クリアー', total: '合計', stage: 'ステージ', time: 'タイム', point: 'スコア', ko: '撃破数',
+    gameover: 'ゲームオーバー', continue: 'コンティニュー'
+}
+const EMOJI = {//Font Awesomeの絵文字のUnicode
+    GHOST: 'f6e2',
+    CAT: 'f6be',
+    CROW: 'f520',
+    HOUSE: 'e00d',
+    TREE: 'f1bb',
+    DOVE: 'f4ba',
+    POO: 'f2fe',
+    CROWN: 'f521'
+}
+Object.freeze(EMOJI);
+class BaddieData {//敵キャラデータ
+    constructor(name, char, color, size, hp, point, routine, form) {
+        this.name = name;
+        this.char = char;
+        this.color = color;
+        this.size = size;
+        this.hp = hp;
+        this.point = point;
+        this.routine = routine;
+        this.form = form;
+    }
+}
+export const datas = {//ゲームデータ
+    baddies: {
+        obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
+        crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
+        dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
+        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.randomtop]),
+        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1'[Baddies.form.topsingle])
+    },
+    player: {
+        moveSpeed: 300,
+        bulletSpeed: 400,
+        firelate: 1 / 20,
+    },
+    game: {
+        highscoreListMax: 10
+    }
+};
+// class SpawnData {
+//     constructor(time, x, y, name) {
+//         this.time = time;
+//         this.x = x;
+//         this.y = y;
+//         this.name = name;
+//     }
+// }
+// gameData.stages = [];
+// const stage1 = [];
+// gameData.stages.push(stage1);
+// stage1.push(new SpawnData(2, 160, 50, 'obake'));
+// stage1.push(new SpawnData(2, 100, 50, 'obake'));
+// stage1.push(new SpawnData(3, 150, 50, 'obake'));
+// stage1.push(new SpawnData(4, 200, 50, 'obake'));
+class scoreData {//成績データ
+    constructor(from) {
+        this.stage = from?.stage || 0;
+        this.time = from?.time || 0;
+        this.point = from?.point || 0;
+        this.ko = from?.ko || 0;
+    }
+}
+export const shared = {//共用変数
+    playdata: {
+        total: new scoreData(),
+        backup: new scoreData()
+    },
+    highscores: []
 }
 export const game = new Game();
 game.start([cfg.font.default, cfg.font.emoji], () => {
