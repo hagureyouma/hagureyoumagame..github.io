@@ -464,6 +464,47 @@ class Ease {//イージングコンポーネント
         pos.y += this.ey * currentEasing;
         if (this.time > 0 && t >= this.time) this.time = 0;
     }
+}class Ease2 {//イージングコンポーネント
+    constructor() {
+        this.reset();
+        return [new Pos(), this];
+    }
+    reset() {
+        this.set(0, 0, 0);
+    }
+    set(x, y, time, { speed = 360, isFirstRand = false, ease = (t) => -Util.degToX(t) } = {}) {
+        this.ex = x;
+        this.ey = y;
+        this.time = time;
+        this.timeOfs = game.sec;
+        let r = (Util.rand(1000) / 1000);
+        if (isFirstRand) this.timeOfs -= r;
+        this.beforeEase = 0;
+        this.speed = speed;
+        this.ease = ease
+    }
+    set(x, y, time, { speed = 360, isFirstRand = false, ease = (t) => -Util.degToX(t) } = {}) {
+        this.ex = x;
+        this.ey = y;
+        this.time = time;
+        this.timeOfs = game.sec;
+        let r = (Util.rand(1000) / 1000);
+        if (isFirstRand) this.timeOfs -= r;
+        this.beforeEase = 0;
+        this.speed = speed;
+        this.ease = ease
+    }
+    update() {
+        if (this.time === 0) return;
+        let t = game.sec - this.timeOfs;
+        const easing = this.ease(t * this.speed);
+        const currentEasing = easing - this.beforeEase;
+        this.beforeEase = easing;
+        const pos = this.owner.pos;
+        pos.x += this.ex * currentEasing;
+        pos.y += this.ey * currentEasing;
+        if (this.time > 0 && t >= this.time) this.time = 0;
+    }
 }
 class Anime extends Ease {//アニメコンポーネント
     constructor() {
