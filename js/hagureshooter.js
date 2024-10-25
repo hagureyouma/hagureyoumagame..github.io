@@ -444,7 +444,7 @@ class Ease {//イージングコンポーネント
     reset() {
         this.set(0, 0, 0);
     }
-    set(x, y, time, { isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sin }) {
+    set(x, y, time, { isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sin }={}) {
         this.x = x;
         this.y = y;
         this.time = time;
@@ -748,7 +748,7 @@ class Tsubu extends Mono {//パーティクル
     constructor() {
         super(new Child());
         this.child.addCreator(Tsubu.name, () => {
-            const t = new Mono(new Jumyo(), new Move(), new Brush());
+            const t = new Mono(new Jumyo(), new Ease(), new Brush());
             t.update = () => t.brush.alpha = t.jumyo.percentage;
             return t;
         });
@@ -762,7 +762,8 @@ class Tsubu extends Mono {//パーティクル
             t.pos.set(x, y, 8, 8);
             t.pos.align = 1;
             t.pos.valign = 1;
-            t.move.set(Util.degToX(deg * i) * speed, Util.degToY(deg * i) * speed, c);
+           // t.move.set(, c);
+            t.ease.set(Util.degToX(deg * i) * speed, Util.degToY(deg * i) * speed,1)
             t.jumyo.lifeSpan = lifeSpan;
             t.jumyo.lifeStage = 0;
         }
@@ -1284,7 +1285,7 @@ class Baddies extends Mono {//敵キャラ管理
 class Baddie extends Mono {//敵キャラ   
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
-        super(new State(), new Ease(), new Anime(), new Moji(), new Collision(), new Unit());
+        super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
