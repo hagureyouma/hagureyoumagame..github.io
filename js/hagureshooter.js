@@ -435,6 +435,8 @@ class Move {//動作コンポーネント
     }
 }
 class Ease {//イージングコンポーネント
+    static none = (t) => t;
+    static sin = (t) => -Util.degToX(t);
     constructor() {
         this.reset();
         return [new Pos(), this];
@@ -442,68 +444,33 @@ class Ease {//イージングコンポーネント
     reset() {
         this.set(0, 0, 0);
     }
-    set(x, y, time, { speed = 360, isFirstRand = false, ease = (t) => -Util.degToX(t) } = {}) {
-        this.ex = x;
-        this.ey = y;
+    set(x, y, time, { isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sin }) {
+        this.x = x;
+        this.y = y;
         this.time = time;
         this.timeOfs = game.sec;
-        let r = (Util.rand(1000) / 1000);
-        if (isFirstRand) this.timeOfs -= r;
-        this.beforeEase = 0;
-        this.speed = speed;
+        this.isAbsolute = isAbsolute;
+        this.isPerpetual = isPerpetual;
+        if (isFirstRand) this.timeOfs -= Util.rand(1000) / 1000;
+        this.beforeEasing = 0;
         this.ease = ease
+        return waitForFrag(() => this.time === 0);
     }
     update() {
         if (this.time === 0) return;
         let t = game.sec - this.timeOfs;
-        const easing = this.ease(t * this.speed);
-        const currentEasing = easing - this.beforeEase;
-        this.beforeEase = easing;
+        const easing = this.ease((t / this.time) * 90);
+        const currentEasing = easing - this.beforeEasing;
+        this.beforeEasing = easing;
         const pos = this.owner.pos;
-        pos.x += this.ex * currentEasing;
-        pos.y += this.ey * currentEasing;
-        if (this.time > 0 && t >= this.time) this.time = 0;
-    }
-}class Ease2 {//イージングコンポーネント
-    constructor() {
-        this.reset();
-        return [new Pos(), this];
-    }
-    reset() {
-        this.set(0, 0, 0);
-    }
-    set(x, y, time, { speed = 360, isFirstRand = false, ease = (t) => -Util.degToX(t) } = {}) {
-        this.ex = x;
-        this.ey = y;
-        this.time = time;
-        this.timeOfs = game.sec;
-        let r = (Util.rand(1000) / 1000);
-        if (isFirstRand) this.timeOfs -= r;
-        this.beforeEase = 0;
-        this.speed = speed;
-        this.ease = ease
-    }
-    set(x, y, time, { speed = 360, isFirstRand = false, ease = (t) => -Util.degToX(t) } = {}) {
-        this.ex = x;
-        this.ey = y;
-        this.time = time;
-        this.timeOfs = game.sec;
-        let r = (Util.rand(1000) / 1000);
-        if (isFirstRand) this.timeOfs -= r;
-        this.beforeEase = 0;
-        this.speed = speed;
-        this.ease = ease
-    }
-    update() {
-        if (this.time === 0) return;
-        let t = game.sec - this.timeOfs;
-        const easing = this.ease(t * this.speed);
-        const currentEasing = easing - this.beforeEase;
-        this.beforeEase = easing;
-        const pos = this.owner.pos;
-        pos.x += this.ex * currentEasing;
-        pos.y += this.ey * currentEasing;
-        if (this.time > 0 && t >= this.time) this.time = 0;
+        if (this.isAbsolute) {
+            pos.x += (this.x - pos.x) * currentEasing;
+            pos.y += (this.y - pos.y) * currentEasing;
+        } else {
+            pos.x += this.x * currentEasing;
+            pos.y += this.y * currentEasing;
+        }
+        if (!this.isPerpetual && t >= 1) this.time = 0;
     }
 }
 class Anime extends Ease {//アニメコンポーネント
@@ -1187,7 +1154,7 @@ class Player extends Mono {//プレイヤーキャラ
     }
 }
 class Baddies extends Mono {//敵キャラ管理
-    static form = { v: 0, delta: 1, tri: 2, inverttri: 3, trail: 4, abrest: 5, topsingle: 6, left: 7, right: 8, randomtop: 9, randomside: 10 };
+    static form = { within: 'within', v: 'v', delta: 'delta', tri: 'tri', inverttri: 'inverttri', trail: 'trail', abrest: 'abrest', topsingle: 'topsingle', left: 'left', right: 'right', randomtop: 'randomtop', randomside: 'randomside' };
     static {
         Object.freeze(Baddies.form);
     }
@@ -1204,6 +1171,12 @@ class Baddies extends Mono {//敵キャラ管理
         const size = datas.baddies[name].size;
         const baseY = -size;
         const spawn = (x, y) => this.spawn(x, y, name, pattern, bullets, scene);
+        const singleform = (isTop = false) => {
+            if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
+            if (y < 0) y = Util.rand(game.width - size) + size * 0.5;
+            if (isTop) y = baseY;
+            spawn(x, y);
+        }
         const vform = (isReverse = false) => {
             const row = Math.floor(n * 0.5) + 1;
             if (x < 0) {
@@ -1269,8 +1242,11 @@ class Baddies extends Mono {//敵キャラ管理
             }
         }
         switch (type) {
+            case Baddies.form.within:
+                singleform();
+                break;
             case Baddies.form.topsingle:
-                spawn(x, baseY);
+                singleform(true);
                 break;
             case Baddies.form.v:
                 vform();
@@ -1308,7 +1284,7 @@ class Baddies extends Mono {//敵キャラ管理
 class Baddie extends Mono {//敵キャラ   
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
-        super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
+        super(new State(), new Ease(), new Anime(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
@@ -1322,9 +1298,9 @@ class Baddie extends Mono {//敵キャラ
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
-            this.anime.set(size/8, 0, -1, { speed: 480 / (size / 40), isFirstRand: true });
+            this.anime.set(size / 8, 0, size / 320, { isPerpetual: true, isFirstRand: true });
         } else {
-            this.anime.set(0, size / 8, -1, { speed: 480 / (size / 40), isFirstRand: true });
+            this.anime.set(0, size / 8, size / 320, { isPerpetual: true, isFirstRand: true });
         }
     }
     whichSpawnType() {
@@ -1348,6 +1324,7 @@ class Baddie extends Mono {//敵キャラ
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
+                user.setAnime(isAnimeVirtical);
                 break;
             case Baddie.spawnType.top:
                 user.move.set(0, moveSpeed);
@@ -1712,7 +1689,7 @@ export const datas = {//ゲームデータ
         obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
         crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
         dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
-        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.randomtop]),
+        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.within]),
         greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle])
     },
     player: {
