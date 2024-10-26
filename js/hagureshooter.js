@@ -435,8 +435,9 @@ class Move {//動作コンポーネント
     }
 }
 class Ease {//イージングコンポーネント
-    static none = (t) => t;
-    static sin = (t) => -Util.degToX(t);
+    static liner = (t) => t;
+    static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
+    static sineout = (t) => Math.sin(t * Math.PI / 2);
     constructor() {
         this.reset();
         return [new Pos(), this];
@@ -444,33 +445,42 @@ class Ease {//イージングコンポーネント
     reset() {
         this.set(0, 0, 0);
     }
-    set(x, y, time, { isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sin }={}) {
-        this.x = x;
-        this.y = y;
+
+    set(deg, distance, time, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+        this.vx = Util.degToX(deg);
+        this.vy = Util.degToY(deg);
+        this.distance = distance;
+        this.speedOffset = speedOffset;
         this.time = time;
-        this.timeOfs = game.sec;
+        this.elaps = 0;
         this.isAbsolute = isAbsolute;
         this.isPerpetual = isPerpetual;
-        if (isFirstRand) this.timeOfs -= Util.rand(1000) / 1000;
+        if (isFirstRand) this.elaps = Util.rand(1000) / 1000;
         this.beforeEasing = 0;
-        this.ease = ease
+        this.ease = ease;
         return waitForFrag(() => this.time === 0);
+    }
+    set2(deg, distance, speed, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+        const x = this.owner.pos.x - Util.degToX(deg) * distance;
+        const y = this.owner.pos.y - Util.degToY(deg) * distance;
+        const d = Util.distanse(x, y);
+        return this.set(deg, d, d / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
     }
     update() {
         if (this.time === 0) return;
-        let t = game.sec - this.timeOfs;
-        const easing = this.ease((t / this.time) * 90);
+        this.elaps += game.delta;
+        const easing = this.ease(this.elaps / this.time);
         const currentEasing = easing - this.beforeEasing;
         this.beforeEasing = easing;
         const pos = this.owner.pos;
         if (this.isAbsolute) {
-            pos.x += (this.x - pos.x) * currentEasing;
-            pos.y += (this.y - pos.y) * currentEasing;
+            pos.x += (this.vx * (this.distance - pos.x) - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
+            pos.y += (this.vy * (this.distance - pos.y) - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
         } else {
-            pos.x += this.x * currentEasing;
-            pos.y += this.y * currentEasing;
+            pos.x += this.vx * (this.distance - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
+            pos.y += this.vy * (this.distance - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
         }
-        if (!this.isPerpetual && t >= 1) this.time = 0;
+        if (!this.isPerpetual && this.elaps >= 1) this.time = 0;
     }
 }
 class Anime extends Ease {//アニメコンポーネント
@@ -749,21 +759,20 @@ class Tsubu extends Mono {//パーティクル
         super(new Child());
         this.child.addCreator(Tsubu.name, () => {
             const t = new Mono(new Jumyo(), new Ease(), new Brush());
-            t.update = () => t.brush.alpha = t.jumyo.percentage;
+            t.update = () => t.brush.alpha = 1 - t.jumyo.percentage;
             return t;
         });
     }
-    emittCircle(count, speed, lifeSpan, color, x, y, c) {
+    emittCircle(count, speed, lifeSpan, size, color, x, y) {
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const t = this.child.pool(Tsubu.name);
             t.brush.color = color;
             t.brush.alpha = 1;
-            t.pos.set(x, y, 8, 8);
+            t.pos.set(x, y, size, size);
             t.pos.align = 1;
             t.pos.valign = 1;
-           // t.move.set(, c);
-            t.ease.set(Util.degToX(deg * i) * speed, Util.degToY(deg * i) * speed,1)
+            t.ease.set(deg * i, speed, lifeSpan);
             t.jumyo.lifeSpan = lifeSpan;
             t.jumyo.lifeStage = 0;
         }
@@ -946,7 +955,7 @@ class ScenePlay extends Mono {//プレイ画面
                 shared.playdata.total.point += 100;
                 if (!target.unit.isBanish(1)) return;
                 shared.playdata.total.point += target.unit.point;
-                this.effect.emittCircle(8, 300, 0.5, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
+                this.effect.emittCircle(8, target.pos.width * 1.5, 0.5, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
                 shared.playdata.total.ko += target.unit.defeat();
             })
         }
@@ -1007,7 +1016,8 @@ class ScenePlay extends Mono {//プレイ画面
         let phaseLength = 999;
         let maxSpawn = 10;
         let spawnInterval = 1;
-        const appears = ['crow', 'dove', 'bigcrow'];
+        //const appears = ['crow', 'dove', 'bigcrow'];
+        const appears = ['dove'];
         // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
         //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
         //         yield undefined;
@@ -1023,8 +1033,10 @@ class ScenePlay extends Mono {//プレイ画面
 
             const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
             const spawnCount = Util.rand(spawnMax);
-            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, data.name, 0, this.baddiesbullets, this, 0));
-            yield* waitForTime(Util.rand(3, 1));
+            //this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, 1, data.name, 0, this.baddiesbullets, this, 0));
+            this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.left, -1, -1, spawnCount, data.name, 0, this.baddiesbullets, this, 0));
+            yield* waitForTime(999);
+            //yield* waitForTime(Util.rand(3, 1));
         }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
@@ -1238,7 +1250,8 @@ class Baddies extends Mono {//敵キャラ管理
                 if (!isSide) {
                     spawn(size * (p + 1), baseY + -Util.rand(size));
                 } else {
-                    spawn(X(Boolean(Util.rand(1))) + Util.rand(size), size * (p + 1))
+                    const r = Util.rand(1);
+                    spawn(X(Boolean(r)) + (r === 1 ? 1 : -1) * Util.rand(size), size * (p + 1))
                 }
             }
         }
@@ -1285,7 +1298,7 @@ class Baddies extends Mono {//敵キャラ管理
 class Baddie extends Mono {//敵キャラ   
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
-        super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
+        super(new State(), new Ease(), new Anime(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
@@ -1299,9 +1312,9 @@ class Baddie extends Mono {//敵キャラ
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
-            this.anime.set(size / 8, 0, size / 320, { isPerpetual: true, isFirstRand: true });
+            this.anime.set(0, size / 8, size / 240, { isPerpetual: true, isFirstRand: true });
         } else {
-            this.anime.set(0, size / 8, size / 320, { isPerpetual: true, isFirstRand: true });
+            this.anime.set(90, size / 8, size / 240, { isPerpetual: true, isFirstRand: true });
         }
     }
     whichSpawnType() {
@@ -1328,7 +1341,7 @@ class Baddie extends Mono {//敵キャラ
                 user.setAnime(isAnimeVirtical);
                 break;
             case Baddie.spawnType.top:
-                user.move.set(0, moveSpeed);
+                user.ease.set2(270, moveSpeed, moveSpeed, { isPerpetual: true, ease: Ease.liner });
                 switch (pattern) {
                     case 0:
                         user.setAnime(isAnimeVirtical);
@@ -1339,10 +1352,11 @@ class Baddie extends Mono {//敵キャラ
                 }
                 break;
             case Baddie.spawnType.left:
-                user.move.set(moveSpeed, 0);
+                user.ease.set2(0, moveSpeed, moveSpeed, { isPerpetual: true, ease: Ease.liner });
+
                 break;
             case Baddie.spawnType.right:
-                user.move.set(-moveSpeed, 0);
+                user.ease.set2(180, moveSpeed, moveSpeed, { isPerpetual: true, ease: Ease.liner });
                 break;
         }
     }
@@ -1358,8 +1372,8 @@ class Baddie extends Mono {//敵キャラ
             yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         zako2: function* (user, pattern, bullets, scene) {
-            const moveSpeed = 500;
-            const moveVias = 0.0375;
+            const maxMoveSpeed = game.width * 1.2;
+            const minMoveSpeed = game.width * 0.8;
             const shot1 = function* () {
                 yield* waitForFrag(() => game.isWithin(user.pos.rect));
                 yield* waitForTime(Util.rand(60) * game.delta);
@@ -1372,20 +1386,20 @@ class Baddie extends Mono {//敵キャラ
             user.setAnime(isAnimeVirtical);
             switch (spawnType) {
                 case Baddie.spawnType.left:
-                    user.move.set(moveSpeed, 0, 1 - moveVias, moveSpeed * 0.25);
-                    yield* waitForFrag(() => user.pos.x >= game.width * 0.4);
+                    yield* user.ease.set2(0, 0, maxMoveSpeed, { isAbsolute: true, ease: Ease.liner });
+                    yield* user.ease.set2(0, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sinein });
                     user.state.start(shot1());
-                    user.move.vc = 1;
-                    yield* waitForFrag(() => user.pos.x >= game.width * 0.6);
-                    user.move.vc = 1 + moveVias;
+                    yield* user.ease.set2(0, game.width * 0.2, minMoveSpeed, { ease: Ease.liner });
+                    yield* user.ease.set2(0, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sineout });
+                    yield* user.ease.set2(0, user.size, maxMoveSpeed, { ease: Ease.liner });
                     break;
                 case Baddie.spawnType.right:
-                    user.move.set(-moveSpeed, 0, 1 - moveVias, moveSpeed * 0.25);
-                    yield* waitForFrag(() => user.pos.x < game.width * 0.6);
+                    yield* user.ease.set2(180, game.width, maxMoveSpeed, { isAbsolute: true, ease: Ease.liner });
+                    yield* user.ease.set2(180, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sinein });
                     user.state.start(shot1());
-                    user.move.vc = 1;
-                    yield* waitForFrag(() => user.pos.x < game.width * 0.4);
-                    user.move.vc = 1 + moveVias;
+                    yield* user.ease.set2(180, game.width * 0.2, minMoveSpeed, { ease: Ease.liner });
+                    yield* user.ease.set2(180, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sineout });
+                    yield* user.ease.set2(180, user.size, maxMoveSpeed, { ease: Ease.liner });
                     break;
                 default:
             }
