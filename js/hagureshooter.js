@@ -447,6 +447,14 @@ class Ease {//イージングコンポーネント
     }
 
     set(deg, distance, time, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+        if (isAbsolute) {
+            const x = Util.degToX(deg) * distance - this.owner.pos.x;
+            const y = Util.degToY(deg) * distance - this.owner.pos.y;
+            deg=Util.xyToDeg(x,y);
+            distance = Util.distanse(x, y);
+        }
+
+
         this.vx = Util.degToX(deg);
         this.vy = Util.degToY(deg);
         this.distance = distance;
@@ -461,10 +469,13 @@ class Ease {//イージングコンポーネント
         return waitForFrag(() => this.time === 0);
     }
     set2(deg, distance, speed, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
-        const x = this.owner.pos.x - Util.degToX(deg) * distance;
-        const y = this.owner.pos.y - Util.degToY(deg) * distance;
-        const d = Util.distanse(x, y);
-        return this.set(deg, d, d / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
+        if (isAbsolute) {
+            const x = Util.degToX(deg) * distance - this.owner.pos.x;
+            const y = Util.degToY(deg) * distance - this.owner.pos.y;
+            deg=Util.xyToDeg(x,y);
+            distance = Util.distanse(x, y);
+        }
+        return this.set(deg, distance, distance / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
     }
     update() {
         if (this.time === 0) return;
