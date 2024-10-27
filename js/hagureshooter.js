@@ -446,7 +446,7 @@ class Ease {//イージングコンポーネント
         this.set(0, 0, 0);
     }
 
-    set(deg, distance, time, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+    set(deg, distance, time, {speed=0, speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
         if (isAbsolute) {
             const x = Util.degToX(deg) * distance - this.owner.pos.x;
             const y = Util.degToY(deg) * distance - this.owner.pos.y;
@@ -469,12 +469,7 @@ class Ease {//イージングコンポーネント
         return waitForFrag(() => this.time === 0);
     }
     set2(deg, distance, speed, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
-        if (isAbsolute) {
-            const x = Util.degToX(deg) * distance - this.owner.pos.x;
-            const y = Util.degToY(deg) * distance - this.owner.pos.y;
-            deg=Util.xyToDeg(x,y);
-            distance = Util.distanse(x, y);
-        }
+
         return this.set(deg, distance, distance / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
     }
     update() {
