@@ -446,20 +446,17 @@ class Ease {//イージングコンポーネント
         this.set(0, 0, 0);
     }
 
-    set(deg, distance, time, {speed=0, speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
-        if (isAbsolute) {
-            const x = Util.degToX(deg) * distance - this.owner.pos.x;
-            const y = Util.degToY(deg) * distance - this.owner.pos.y;
-            deg=Util.xyToDeg(x,y);
-            distance = Util.distanse(x, y);
-        }
+    set = (x, y, time, { speedOffset = 0, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) => this._set(x, y, time, { speedOffset, isPerpetual, isFirstRand, ease });
 
+    to = (x, y, time, { speedOffset = 0, isFirstRand = false, ease = Ease.sineout } = {}) => this._set(x - this.owner.pos.x, y - this.owner.pos.y, time, { speedOffset, isFirstRand, ease });
+    toSpeed = (x, y, speed, { speedOffset = 0, isFirstRand = false, ease = Ease.sineout } = {}) => this._set(x - this.owner.pos.x, y - this.owner.pos.y, time, { speed,speedOffset, isFirstRand, ease });
 
-        this.vx = Util.degToX(deg);
-        this.vy = Util.degToY(deg);
-        this.distance = distance;
+    _set(x, y, time, { speed = 0, speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+        this.vx = x;
+        this.vy = y;
+        this.distance = Util.distanse(x, y);
         this.speedOffset = speedOffset;
-        this.time = time;
+        this.time = speed > 0 ? distance / speed : time;
         this.elaps = 0;
         this.isAbsolute = isAbsolute;
         this.isPerpetual = isPerpetual;
@@ -468,10 +465,7 @@ class Ease {//イージングコンポーネント
         this.ease = ease;
         return waitForFrag(() => this.time === 0);
     }
-    set2(deg, distance, speed, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
 
-        return this.set(deg, distance, distance / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
-    }
     update() {
         if (this.time === 0) return;
         this.elaps += game.delta;
@@ -479,13 +473,8 @@ class Ease {//イージングコンポーネント
         const currentEasing = easing - this.beforeEasing;
         this.beforeEasing = easing;
         const pos = this.owner.pos;
-        if (this.isAbsolute) {
-            pos.x += (this.vx * (this.distance - pos.x) - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
-            pos.y += (this.vy * (this.distance - pos.y) - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
-        } else {
-            pos.x += this.vx * (this.distance - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
-            pos.y += this.vy * (this.distance - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
-        }
+        pos.x += this.vx * (this.distance - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
+        pos.y += this.vy * (this.distance - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
         if (!this.isPerpetual && this.elaps >= 1) this.time = 0;
     }
 }
