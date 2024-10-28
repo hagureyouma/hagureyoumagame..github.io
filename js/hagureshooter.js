@@ -415,35 +415,35 @@ class Move {//動作コンポーネント
         this.vy = vy;
         this.ease = { value: () => game.delta() };
     }
-    move(x, y, speed, easing,{ isloop = false, first = 0, last = 1}={}) {
+    move(x, y, speed, easing, { isloop = false, first = 0, last = 1 } = {}) {
         const d = Util.distanse(x, y);
         const time = d / speed;
-        this._set(x,y,d,time,speed,easing,isloop);
+        this._set(x, y, d, time, speed, easing, isloop, first, last);
     }
-    moveTime(x, y, time, easing, isloop = false) {
+    moveTime(x, y, time, easing, { isloop = false, first = 0, last = 1 }) {
         const d = Util.distanse(x, y);
         const speed = d / time;
-        this._set(x,y,d,time,speed,easing,isloop);
+        this._set(x, y, d, time, speed, easing, isloop, first, last);
     }
-    to(x, y, speed, easing, isloop = false) {
+    to(x, y, speed, easing, { isloop = false, first = 0, last = 1 }) {
         const pos = this.owner.pos;
         const rx = pos.x - x, ry = pos.y - y;
         const d = Util.distanse(rx, ry);
         const time = d / speed;
-        this._set(rx,ry,d,time,speed,easing,isloop);
+        this._set(rx, ry, d, time, speed, easing, isloop, first, last);
     }
-    toTime(x, y, time, easing, isloop = false) {
+    toTime(x, y, time, easing, { isloop = false, first = 0, last = 1 }) {
         const pos = this.owner.pos;
         const rx = pos.x - x, ry = pos.y - y;
         const d = Util.distanse(rx, ry);
-        const speed = d / time;        
-        this._set(rx,ry,d,time,speed,easing,isloop);
+        const speed = d / time;
+        this._set(rx, ry, d, time, speed, easing, isloop, first, last);
     }
-    _set(x,y,d,time,speed,easing,isloop){
+    _set(x, y, d, time, speed, easing, isloop, first, last) {
         this.vx = x / d * speed;
         this.vy = y / d * speed;
         const ease = this.ease = new Easing();
-        ease.set(time, easing, { isloop: isloop });
+        ease.set(time, easing, { isloop, first, last });
     }
     setRevo(x, y, speedDeg) {
         this.originX = x;
