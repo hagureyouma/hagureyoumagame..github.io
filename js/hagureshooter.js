@@ -410,11 +410,40 @@ class Move {//動作コンポーネント
         this.set(0, 0);
         this.setRevo(0, 0, 0);
     }
-    set(vx, vy, vc = 1, vcmin = 0) {
+    set(vx, vy) {
         this.vx = vx;
         this.vy = vy;
-        this.vc = vc;
-        this.vcmin = vcmin;
+        this.ease = { value: () => game.delta() };
+    }
+    move(x, y, speed, easing,{ isloop = false, first = 0, last = 1}={}) {
+        const d = Util.distanse(x, y);
+        const time = d / speed;
+        this._set(x,y,d,time,speed,easing,isloop);
+    }
+    moveTime(x, y, time, easing, isloop = false) {
+        const d = Util.distanse(x, y);
+        const speed = d / time;
+        this._set(x,y,d,time,speed,easing,isloop);
+    }
+    to(x, y, speed, easing, isloop = false) {
+        const pos = this.owner.pos;
+        const rx = pos.x - x, ry = pos.y - y;
+        const d = Util.distanse(rx, ry);
+        const time = d / speed;
+        this._set(rx,ry,d,time,speed,easing,isloop);
+    }
+    toTime(x, y, time, easing, isloop = false) {
+        const pos = this.owner.pos;
+        const rx = pos.x - x, ry = pos.y - y;
+        const d = Util.distanse(rx, ry);
+        const speed = d / time;        
+        this._set(rx,ry,d,time,speed,easing,isloop);
+    }
+    _set(x,y,d,time,speed,easing,isloop){
+        this.vx = x / d * speed;
+        this.vy = y / d * speed;
+        const ease = this.ease = new Easing();
+        ease.set(time, easing, { isloop: isloop });
     }
     setRevo(x, y, speedDeg) {
         this.originX = x;
@@ -424,39 +453,74 @@ class Move {//動作コンポーネント
     update() {
         const pos = this.owner.pos;
         if (this.revo !== 0) {
-            const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, this.revo * game.delta);
+            const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, this.revo * this.ease);
             pos.x = this.originX + x;
             pos.y = this.originY + y;
         }
-        pos.x += this.vx * game.delta;
-        pos.y += this.vy * game.delta;
-        this.vx *= this.vc;
-        this.vy *= this.vc;
+        pos.x += this.vx * this.ease.value;
+        pos.y += this.vy * this.ease.value;
     }
 }
-class Ease {//イージングコンポーネント
+class Easing {
     static liner = (t) => t;
     static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
     static sineout = (t) => Math.sin(t * Math.PI / 2);
     constructor() {
         this.reset();
-        return [new Pos(), this];
+    }
+    reset() {
+        this.set(0);
+    }
+    set(time, ease = Easing.liner, { isLoop = false, first = 0, last = 1 } = {}) {
+        this.time = time;
+        this.ease = ease;
+        this.isLoop = isLoop;
+        this.range = last - first;
+        this.ofs = first;
+        this.elaps = 0;
+        this.before = 0;
+        this.value = 0;
+        return waitForFrag(() => this.time === 0);
+    }
+    update() {
+        if (this.time === 0) return;
+        const curr = this.ease(this.elaps);
+        this.value = (this.before - curr) * this.range + this.ofs;
+        if (!this.isLoop && this.elaps === 1) {
+            this.time = 0;
+        }
+        this.before = curr;
+        this.elaps = this.elaps + this.delta / this.time;
+        if (!isloop) this.elaps = Math.min(this.elaps, 1);
+    }
+}
+class Ease {//イージング
+    static liner = (t) => t;
+    static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
+    static sineout = (t) => Math.sin(t * Math.PI / 2);
+    constructor() {
+        this.reset();
     }
     reset() {
         this.set(0, 0, 0);
     }
 
-    set = (x, y, time, { speedOffset = 0, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) => this._set(x, y, time, { speedOffset, isPerpetual, isFirstRand, ease });
 
-    to = (x, y, time, { speedOffset = 0, isFirstRand = false, ease = Ease.sineout } = {}) => this._set(x - this.owner.pos.x, y - this.owner.pos.y, time, { speedOffset, isFirstRand, ease });
-    toSpeed = (x, y, speed, { speedOffset = 0, isFirstRand = false, ease = Ease.sineout } = {}) => this._set(x - this.owner.pos.x, y - this.owner.pos.y, time, { speed,speedOffset, isFirstRand, ease });
 
-    _set(x, y, time, { speed = 0, speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
-        this.vx = x;
-        this.vy = y;
-        this.distance = Util.distanse(x, y);
+    set(deg, distance, time, { speed = 0, speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+        if (isAbsolute) {
+            const x = Util.degToX(deg) * distance - this.owner.pos.x;
+            const y = Util.degToY(deg) * distance - this.owner.pos.y;
+            deg = Util.xyToDeg(x, y);
+            distance = Util.distanse(x, y);
+        }
+
+
+        this.vx = Util.degToX(deg);
+        this.vy = Util.degToY(deg);
+        this.distance = distance;
         this.speedOffset = speedOffset;
-        this.time = speed > 0 ? distance / speed : time;
+        this.time = time;
         this.elaps = 0;
         this.isAbsolute = isAbsolute;
         this.isPerpetual = isPerpetual;
@@ -465,7 +529,15 @@ class Ease {//イージングコンポーネント
         this.ease = ease;
         return waitForFrag(() => this.time === 0);
     }
-
+    set2(deg, distance, speed, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
+        if (isAbsolute) {
+            const x = Util.degToX(deg) * distance - this.owner.pos.x;
+            const y = Util.degToY(deg) * distance - this.owner.pos.y;
+            deg = Util.xyToDeg(x, y);
+            distance = Util.distanse(x, y);
+        }
+        return this.set(deg, distance, distance / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
+    }
     update() {
         if (this.time === 0) return;
         this.elaps += game.delta;
@@ -473,8 +545,13 @@ class Ease {//イージングコンポーネント
         const currentEasing = easing - this.beforeEasing;
         this.beforeEasing = easing;
         const pos = this.owner.pos;
-        pos.x += this.vx * (this.distance - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
-        pos.y += this.vy * (this.distance - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
+        if (this.isAbsolute) {
+            pos.x += (this.vx * (this.distance - pos.x) - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
+            pos.y += (this.vy * (this.distance - pos.y) - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
+        } else {
+            pos.x += this.vx * (this.distance - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
+            pos.y += this.vy * (this.distance - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
+        }
         if (!this.isPerpetual && this.elaps >= 1) this.time = 0;
     }
 }
