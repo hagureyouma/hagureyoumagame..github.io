@@ -411,11 +411,16 @@ class Move {//動作コンポーネント
         this.set(0, 0);
         this.setRevo(0, 0, 0);
     }
-    set(vx, vy) {
+    set(vx, vy, speedChangeTime = 0, minSpeedVias = 0, easing = Ease.sineout) {
         this.vx = vx;
         this.vy = vy;
-        this.ease.reset();
-        this.ease.isDelta = true;
+        if (speedChangeTime === 0) {
+            this.ease.reset();
+            this.ease.isDelta = true;
+            return;
+        }
+        this.ease.set(speedChangeTime, easing, false, false, minSpeedVias);
+        this.ease.endToDelta = true;
     }
     relative(x, y, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         this.vx = x;
@@ -476,6 +481,7 @@ class Ease {//イージング
     }
     set(time, ease, isLoop, isfirstRand, min) {
         this.isDelta = false;
+        this.endToDelta = false;
         this.time = time;
         this.ease = ease || Ease.liner;
         this.isLoop = isLoop;
@@ -492,6 +498,7 @@ class Ease {//イージング
         if (this.time === 0) return 0;
         if (!this.isLoop && this.elaps >= 1) {
             this.reset();
+            this.isDelta = this.endToDelta;
             return 0;
         }
         const e = this.ease(this.elaps);
@@ -504,67 +511,6 @@ class Ease {//イージング
     }
     get isActive() { return this.time > 0 || this.isDelta; }
     get percentage() { return this.beforeElaps % 1; }
-}
-class Ease2 {//イージング
-    static liner = (t) => t;
-    static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
-    static sineout = (t) => Math.sin(t * Math.PI / 2);
-    constructor() {
-        this.reset();
-    }
-    reset() {
-        this.set(0, 0, 0);
-    }
-
-
-
-    set(deg, distance, time, { speed = 0, speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
-        if (isAbsolute) {
-            const x = Util.degToX(deg) * distance - this.owner.pos.x;
-            const y = Util.degToY(deg) * distance - this.owner.pos.y;
-            deg = Util.xyToDeg(x, y);
-            distance = Util.distanse(x, y);
-        }
-
-
-        this.vx = Util.degToX(deg);
-        this.vy = Util.degToY(deg);
-        this.distance = distance;
-        this.speedOffset = speedOffset;
-        this.time = time;
-        this.elaps = 0;
-        this.isAbsolute = isAbsolute;
-        this.isPerpetual = isPerpetual;
-        if (isFirstRand) this.elaps = Util.rand(1000) / 1000;
-        this.beforeEasing = 0;
-        this.ease = ease;
-        return waitForFrag(() => this.time === 0);
-    }
-    set2(deg, distance, speed, { speedOffset = 0, isAbsolute = false, isPerpetual = false, isFirstRand = false, ease = Ease.sineout } = {}) {
-        if (isAbsolute) {
-            const x = Util.degToX(deg) * distance - this.owner.pos.x;
-            const y = Util.degToY(deg) * distance - this.owner.pos.y;
-            deg = Util.xyToDeg(x, y);
-            distance = Util.distanse(x, y);
-        }
-        return this.set(deg, distance, distance / speed, { speedOffset, isAbsolute, isPerpetual, isFirstRand, ease });
-    }
-    update() {
-        if (this.time === 0) return;
-        this.elaps += game.delta;
-        const easing = this.ease(this.elaps / this.time);
-        const currentEasing = easing - this.beforeEasing;
-        this.beforeEasing = easing;
-        const pos = this.owner.pos;
-        if (this.isAbsolute) {
-            pos.x += (this.vx * (this.distance - pos.x) - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
-            pos.y += (this.vy * (this.distance - pos.y) - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
-        } else {
-            pos.x += this.vx * (this.distance - this.speedOffset) * currentEasing + this.vx * this.speedOffset * game.delta;
-            pos.y += this.vy * (this.distance - this.speedOffset) * currentEasing + this.vy * this.speedOffset * game.delta;
-        }
-        if (!this.isPerpetual && this.elaps >= 1) this.time = 0;
-    }
 }
 class Anime extends Move {//アニメコンポーネント
     constructor() {
@@ -579,6 +525,11 @@ class Guided {//ホーミングコンポーネント
     reset() {
         this.target = undefined;
         this.aimSpeed = 0
+    }
+    set(target, aimSpeed, firstSpeed, accelTime) {
+        this.target = target;
+        this.aimSpeed = aimSpeed;
+        this.owner.move.set(0, 0, accelTime, firstSpeed, Ease.sinein);
     }
     update() {
         if (!this.target) return;
@@ -1388,7 +1339,7 @@ class Baddies extends Mono {//敵キャラ管理
 class Baddie extends Mono {//敵キャラ   
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
-        super(new State(), new Move(), new Moji(), new Collision(), new Unit());
+        super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
@@ -1402,9 +1353,9 @@ class Baddie extends Mono {//敵キャラ
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
-            this.anime.relativeDeg(0, size / 8, size / 240, { isLoop: true, isFirstRand: true });
+            this.anime.relativeDegForTime(0, size / 8, size / 240, { isLoop: true, isfirstRand: true });
         } else {
-            this.anime.relativeDeg(90, size / 8, size / 240, { isLoop: true, isFirstRand: true });
+            this.anime.relativeDegForTime(90, size / 8, size / 240, { isLoop: true, isfirstRand: true });
         }
     }
     whichSpawnType() {
@@ -1428,7 +1379,7 @@ class Baddie extends Mono {//敵キャラ
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
-                //user.setAnime(isAnimeVirtical);
+                user.setAnime(isAnimeVirtical);
                 yield* user.move.relative(50, 0, 100, { easing: Ease.sineout, min: 0 });
                 yield* user.move.relative(-50, 0, 100, { easing: Ease.sineout, min: 0 });
                 break;
