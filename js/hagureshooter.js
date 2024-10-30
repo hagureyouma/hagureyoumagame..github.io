@@ -403,6 +403,7 @@ class Pos {//座標コンポーネント
 }
 class Move {//動作コンポーネント
     constructor() {
+        this.ease = new Ease();
         this.reset();
         return [new Pos(), this];
     }
@@ -413,19 +414,36 @@ class Move {//動作コンポーネント
     set(vx, vy) {
         this.vx = vx;
         this.vy = vy;
-        this.ease = { value: () => game.delta() };
+        this.ease.reset();
+        this.ease.isDelta = true;
     }
-    move(x, y, speed, easing, { isloop = false, min = 0 } = {}) {
-        const d = Util.distanse(x, y);
-        const time = d / speed;
-        this.vx = x / d * speed;
-        this.vy = y / d * speed;
-        const ease = this.ease = new Easing();
-        ease.set(time, easing, isloop,min,);
+    relative(x, y, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+        this.vx = x;
+        this.vy = y;
+        return this.ease.set(Util.distanse(x, y) / speed, easing, isLoop, isfirstRand, min,);
     }
-    to(x, y, speed, easing, { isloop = false, min = 0 } = {}) {
+    relativeForTime(x, y, time, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+        this.vx = x;
+        this.vy = y;
+        return this.ease.set(time, easing, isLoop, isfirstRand, min,);
+    }
+    relativeDeg(deg, distance, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+        this.vx = Util.degToX(deg) * distance;
+        this.vy = Util.degToY(deg) * distance;
+        return this.ease.set(Util.distanse(x, y) / speed, easing, isLoop, isfirstRand, min,);
+    }
+    relativeDegForTime(deg, distance, time, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+        this.vx = Util.degToX(deg) * distance;
+        this.vy = Util.degToY(deg) * distance;
+        return this.ease.set(time, easing, isLoop, isfirstRand, min,);
+    }
+    to(x, y, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         const pos = this.owner.pos;
-        this.move(pos.x - x, pos.y - y, speed, easing, { isloop, min });
+        return this.relative(pos.x - x, pos.y - y, speed, { easing, isLoop, isfirstRand, min });
+    }
+    toForTime(x, y, time, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+        const pos = this.owner.pos;
+        return this.relativeForTime(pos.x - x, pos.y - y, time, { easing, isLoop, isfirstRand, min });
     }
     setRevo(x, y, speedDeg) {
         this.originX = x;
@@ -433,17 +451,20 @@ class Move {//動作コンポーネント
         this.revo = speedDeg;
     }
     update() {
+        const delta = this.ease.getCurrent();
         const pos = this.owner.pos;
         if (this.revo !== 0) {
-            const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, this.revo * this.ease);
+            const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, this.revo * delta);
             pos.x = this.originX + x;
             pos.y = this.originY + y;
         }
-        pos.x += this.vx * this.ease.value;
-        pos.y += this.vy * this.ease.value;
+        pos.x += this.vx * delta;
+        pos.y += this.vy * delta;
     }
+    get isActive() { return this.ease.isActive; }
+    get percentage() { return this.ease.percentage; }
 }
-class Easing {//イージング
+class Ease {//イージング
     static liner = (t) => t;
     static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
     static sineout = (t) => Math.sin(t * Math.PI / 2);
@@ -451,32 +472,40 @@ class Easing {//イージング
         this.reset();
     }
     reset() {
-        this.set(0);
+        this.set(0, undefined, false, 0);
     }
-    set(time, ease, isLoop,min) {
+    set(time, ease, isLoop, isfirstRand, min) {
+        this.isDelta = false;
         this.time = time;
-        this.ease = ease;
+        this.ease = ease || Ease.liner;
         this.isLoop = isLoop;
-        this.range = 1-min;
+        this.range = 1 - min;
         this.ofs = min;
-        this.elaps = 0;
-        this.before = 0;
+        this.elaps = isfirstRand ? Util.rand(1000) / 1000 : 0;
+        this.beforeElaps = 0;
+        this.beforeEasing = 0;
         this.value = 0;
         return waitForFrag(() => this.time === 0);
     }
-    update() {
-        if (this.time === 0) return;
-        const curr = this.ease(this.elaps);
-        this.value = (this.before - curr) * this.range + this.ofs;
-        if (!this.isLoop && this.elaps === 1) {
-            this.time = 0;
+    getCurrent() {
+        if (this.isDelta) return game.delta;
+        if (this.time === 0) return 0;
+        if (!this.isLoop && this.elaps >= 1) {
+            this.reset();
+            return 0;
         }
-        this.before = curr;
-        this.elaps = this.elaps + this.delta / this.time;
-        if (!isloop) this.elaps = Math.min(this.elaps, 1);
+        const e = this.ease(this.elaps);
+        const ce = e - this.beforeEasing;
+        this.beforeEasing = e;
+        this.beforeElaps = this.elaps;
+        this.elaps = this.elaps + game.delta / this.time;
+        if (!this.isLoop && this.elaps > 1) this.elaps = 1;
+        return (ce * this.range) + (Math.sign(ce) * this.ofs * game.delta);
     }
+    get isActive() { return this.time > 0 || this.isDelta; }
+    get percentage() { return this.beforeElaps % 1; }
 }
-class Ease {//イージング
+class Ease2 {//イージング
     static liner = (t) => t;
     static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
     static sineout = (t) => Math.sin(t * Math.PI / 2);
@@ -812,12 +841,17 @@ class Tsubu extends Mono {//パーティクル
     constructor() {
         super(new Child());
         this.child.addCreator(Tsubu.name, () => {
-            const t = new Mono(new Jumyo(), new Ease(), new Brush());
-            t.update = () => t.brush.alpha = 1 - t.jumyo.percentage;
+            const t = new Mono(new Move(), new Brush());
+            t.update = () => {
+                if (!t.move.isActive) {
+                    t.remove();
+                }
+                t.brush.alpha = 1 - t.move.percentage;
+            }
             return t;
         });
     }
-    emittCircle(count, speed, lifeSpan, size, color, x, y) {
+    emittCircle(count, distance, time, size, color, x, y) {
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const t = this.child.pool(Tsubu.name);
@@ -826,9 +860,7 @@ class Tsubu extends Mono {//パーティクル
             t.pos.set(x, y, size, size);
             t.pos.align = 1;
             t.pos.valign = 1;
-            t.ease.set(deg * i, speed, lifeSpan);
-            t.jumyo.lifeSpan = lifeSpan;
-            t.jumyo.lifeStage = 0;
+            t.move.relativeDegForTime(deg * i, distance, time);
         }
     }
 }
@@ -977,7 +1009,7 @@ class ScenePlay extends Mono {//プレイ画面
 
         this.child.add(this.debug = new Watch());
         this.debug.pos.y = 40;
-        // this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
+        //this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
         // this.textScore.pos.x = 2;
         // this.textScore.pos.y = 48;
         this.stateStageId;
@@ -1009,7 +1041,7 @@ class ScenePlay extends Mono {//プレイ画面
                 shared.playdata.total.point += 100;
                 if (!target.unit.isBanish(1)) return;
                 shared.playdata.total.point += target.unit.point;
-                this.effect.emittCircle(8, target.pos.width * 1.5, 0.5, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
+                this.effect.emittCircle(8, target.pos.width * 1.5, target.pos.width * 0.0125, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
                 shared.playdata.total.ko += target.unit.defeat();
             })
         }
@@ -1066,12 +1098,13 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * stageDefault() {
+
         this.elaps = 0;
         let phaseLength = 999;
         let maxSpawn = 10;
         let spawnInterval = 1;
         //const appears = ['crow', 'dove', 'bigcrow'];
-        const appears = ['dove'];
+        const appears = ['crow'];
         // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
         //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
         //         yield undefined;
@@ -1088,7 +1121,10 @@ class ScenePlay extends Mono {//プレイ画面
             const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
             const spawnCount = Util.rand(spawnMax);
             //this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, 1, data.name, 0, this.baddiesbullets, this, 0));
-            this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.left, -1, -1, spawnCount, data.name, 0, this.baddiesbullets, this, 0));
+            this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.within, 200, 200, spawnCount, data.name, 0, this.baddiesbullets, this, 0));
+            const b = this.baddies.child.objs[0];
+            this.debug.add(() => b.pos.x);
+            this.debug.add(() => b.pos.y);
             yield* waitForTime(999);
             //yield* waitForTime(Util.rand(3, 1));
         }
@@ -1169,7 +1205,7 @@ class Player extends Mono {//プレイヤーキャラ
     constructor(bullets, scene) {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         this.state.start(this.stateDefault.bind(this)(bullets, scene));
-        this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height * 40, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height - 20, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.setHp(1);
         this.unit.kocount = 0;
@@ -1352,7 +1388,7 @@ class Baddies extends Mono {//敵キャラ管理
 class Baddie extends Mono {//敵キャラ   
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
-        super(new State(), new Ease(), new Anime(), new Moji(), new Collision(), new Unit());
+        super(new State(), new Move(), new Moji(), new Collision(), new Unit());
     }
     set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
@@ -1366,9 +1402,9 @@ class Baddie extends Mono {//敵キャラ
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
-            this.anime.set(0, size / 8, size / 240, { isPerpetual: true, isFirstRand: true });
+            this.anime.relativeDeg(0, size / 8, size / 240, { isLoop: true, isFirstRand: true });
         } else {
-            this.anime.set(90, size / 8, size / 240, { isPerpetual: true, isFirstRand: true });
+            this.anime.relativeDeg(90, size / 8, size / 240, { isLoop: true, isFirstRand: true });
         }
     }
     whichSpawnType() {
@@ -1385,17 +1421,19 @@ class Baddie extends Mono {//敵キャラ
         return [result, isMoveVirtical];
     }
     *routineBasic(user, pattern, moveSpeed, shot) {
-        user.state.start(function* () {
-            yield* waitForFrag(() => game.isWithin(user.pos.rect));
-            yield* shot();
-        }());
+        // user.state.start(function* () {
+        //     yield* waitForFrag(() => game.isWithin(user.pos.rect));
+        //     yield* shot();
+        // }());
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
-                user.setAnime(isAnimeVirtical);
+                //user.setAnime(isAnimeVirtical);
+                yield* user.move.relative(50, 0, 100, { easing: Ease.sineout, min: 0 });
+                yield* user.move.relative(-50, 0, 100, { easing: Ease.sineout, min: 0 });
                 break;
             case Baddie.spawnType.top:
-                user.ease.set2(270, moveSpeed, moveSpeed, { isPerpetual: true, ease: Ease.liner });
+
                 switch (pattern) {
                     case 0:
                         user.setAnime(isAnimeVirtical);
