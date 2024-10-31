@@ -389,12 +389,16 @@ class Pos {//座標コンポーネント
         this.parent = undefined;//座標リンクつける？
     }
     set(x, y, width, height) {
-        this.x = x;
-        this.y = y;
+        this._x = x;
+        this._y = y;
         this.width = width;
         this.height = height;
         return this;
     }
+    get x() { return this._x + (this.parent ? this.parent.pos.x : 0) }
+    set x(value) { this._x = value }
+    get y() { return this._y + (this.parent ? this.parent.pos.y : 0) }
+    set y(value) { this._y = value }
     get left() { return Math.floor(this.x - this.align * this.width * 0.5) };
     get top() { return Math.floor(this.y - this.valign * this.height * 0.5) };
     get right() { return this.left + this.width; }
@@ -422,33 +426,33 @@ class Move {//動作コンポーネント
         this.ease.set(speedChangeTime, easing, false, false, minSpeedVias);
         this.ease.endToDelta = true;
     }
-    relative(x, y, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    relative(x, y, speed, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         this.vx = x;
         this.vy = y;
         return this.ease.set(Util.distanse(x, y) / speed, easing, isLoop, isfirstRand, min,);
     }
-    relativeForTime(x, y, time, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    relativeForTime(x, y, time, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         this.vx = x;
         this.vy = y;
         return this.ease.set(time, easing, isLoop, isfirstRand, min,);
     }
-    relativeDeg(deg, distance, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    relativeDeg(deg, distance, speed, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         this.vx = Util.degToX(deg) * distance;
         this.vy = Util.degToY(deg) * distance;
         return this.ease.set(Util.distanse(x, y) / speed, easing, isLoop, isfirstRand, min,);
     }
-    relativeDegForTime(deg, distance, time, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    relativeDegForTime(deg, distance, time, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         this.vx = Util.degToX(deg) * distance;
         this.vy = Util.degToY(deg) * distance;
         return this.ease.set(time, easing, isLoop, isfirstRand, min,);
     }
-    to(x, y, speed, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    to(x, y, speed, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         const pos = this.owner.pos;
-        return this.relative(pos.x - x, pos.y - y, speed, { easing, isLoop, isfirstRand, min });
+        return this.relative(x - pos.x, y - pos.y, speed, { easing, isLoop, isfirstRand, min });
     }
-    toForTime(x, y, time, { easing = Ease.sineout, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    toForTime(x, y, time, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
         const pos = this.owner.pos;
-        return this.relativeForTime(pos.x - x, pos.y - y, time, { easing, isLoop, isfirstRand, min });
+        return this.relativeForTime(x - pos.x, y - pos.y, time, { easing, isLoop, isfirstRand, min });
     }
     setRevo(x, y, speedDeg) {
         this.originX = x;
@@ -496,21 +500,20 @@ class Ease {//イージング
     getCurrent() {
         if (this.isDelta) return game.delta;
         if (this.time === 0) return 0;
-        if (!this.isLoop && this.elaps >= 1) {
-            this.reset();
-            this.isDelta = this.endToDelta;
-            return 0;
-        }
+        const t = game.delta / this.time;
+        this.elaps += t;
+        if (!this.isLoop && this.elaps >= 1) this.elaps = 1;
         const e = this.ease(this.elaps);
         const ce = e - this.beforeEasing;
         this.beforeEasing = e;
-        this.beforeElaps = this.elaps;
-        this.elaps = this.elaps + game.delta / this.time;
-        if (!this.isLoop && this.elaps > 1) this.elaps = 1;
-        return (ce * this.range) + (Math.sign(ce) * this.ofs * game.delta);
+        if (!this.isLoop && this.elaps >= 1) {
+            this.time = 0;
+            this.isDelta = this.endToDelta;
+        }
+        return (ce * this.range) + (Math.sign(ce) * this.ofs * t)
     }
     get isActive() { return this.time > 0 || this.isDelta; }
-    get percentage() { return this.beforeElaps % 1; }
+    get percentage() { return this.elaps % 1; }
 }
 class Anime extends Move {//アニメコンポーネント
     constructor() {
@@ -870,6 +873,9 @@ class Watch extends Mono {//デバッグ用変数表示
         this.child.drawlayer = 'ui';
         this.child.addCreator('label', () => new Label());
     }
+    clear() {
+        this.child.removeAll();
+    }
     add(watch) {
         const l = this.child.pool('label');
         l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5) });
@@ -1049,55 +1055,54 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * stageDefault() {
-
         this.elaps = 0;
-        let phaseLength = 999;
-        let maxSpawn = 10;
-        let spawnInterval = 1;
-        //const appears = ['crow', 'dove', 'bigcrow'];
-        const appears = ['crow'];
+        let phaseLength = 30;
+        const appears = ['crow', 'dove', 'bigcrow'];
+        const bossName = 'greatcrow';
         // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.baddies.child.liveCount >= maxSpawn || this.elaps > phaseLength) {
+        //     if (this.elaps > phaseLength) {
         //         yield undefined;
         //         continue;
-        //     }            
-        //     //this.baddies.spawn(Util.random(30, game.width - 30), Util.random(30, game.height * 0.5), baddies[Util.random(0, 1)], this.baddiesbullets, this);
+        //     }
+        //     const baddieName = appears[Util.rand(appears.length - 1)];
+        //     const data = datas.baddies[baddieName];
+        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
+
+        //     const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
+        //     const spawnCount = Util.rand(spawnMax);
+        //     this.baddies.formation(formation, -1, -1, spawnCount, data.name, 0, this.baddiesbullets, this, 0);
+        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.within, 200, 200, spawnCount, data.name, 0, this.baddiesbullets, this, 0));            
+        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.left, -1, 100, 1, data.name, 0, this.baddiesbullets, this, 0));
+        //     // const b = this.baddies.child.objs[0];
+
+        //     // this.debug.clear();
+        //     // this.debug.add(() => b.pos.x);
+        //     // this.debug.add(() => b.pos.y);
+        //     //yield* waitForTime(999);
+        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
         // }
-
-        while (true) {
-            const baddieName = appears[Util.rand(appears.length - 1)];
-            const data = datas.baddies[baddieName];
-            const formation = data.forms[Util.rand(data.forms.length - 1)];
-
-            const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
-            const spawnCount = Util.rand(spawnMax);
-            //this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, 1, data.name, 0, this.baddiesbullets, this, 0));
-            this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.within, 200, 200, spawnCount, data.name, 0, this.baddiesbullets, this, 0));
-            const b = this.baddies.child.objs[0];
-            this.debug.add(() => b.pos.x);
-            this.debug.add(() => b.pos.y);
-            yield* waitForTime(999);
-            //yield* waitForTime(Util.rand(3, 1));
-        }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
-        const boss = this.baddies.spawn(game.width * 0.5, game.height * 0.25, 'greatcrow', this.baddiesbullets, this);
-        //boss.move.setEase(0, 10, 1, { vias: 2 });
-        //boss.move.setRevo(200, 200, 200);
+        if (this.isFailure) return;
+        {//ステージボス登場
+            const data = datas.baddies[bossName];
+            const formation = data.forms[0];
+            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, data.name, 0, this.baddiesbullets, this, 0);
 
-        this.bossHPgauge.isExist = true;
-        this.bossHPgauge.max = boss.unit.maxHp;
-        this.bossHPgauge.watch = () => boss.unit.hp;
-        this.ui.child.add(this.bossHPgauge);
+            this.bossHPgauge.isExist = true;
+            this.bossHPgauge.max = boss.unit.maxHp;
+            this.bossHPgauge.watch = () => boss.unit.hp;
+            this.ui.child.add(this.bossHPgauge);
 
-        this.debug.child.removeAll();
-        this.debug.add(() => `タイム: ${boss.move.time}`);
-        this.debug.add(() => `X座標: ${boss.pos.x}`);
-        this.debug.add(() => `Y座標: ${boss.pos.y}`);
-        this.debug.add(() => `: ${-Math.sin(this.elaps * Math.PI)}`);
+            this.debug.clear();
+            this.debug.add(() => `タイム: ${shared.playdata.total.time}`);
+            this.debug.add(() => `X座標: ${boss.pos.x}`);
+            this.debug.add(() => `Y座標: ${boss.pos.y}`);
+            this.debug.add(() => `: ${-Math.sin(this.elaps * Math.PI)}`);
 
-        yield* waitForFrag(() => boss.unit.isDefeat);
-        this.bossHPgauge.remove();
+            yield* waitForFrag(() => boss.unit.isDefeat);
+            this.bossHPgauge.remove();
+        }
     }
     newGame() {
         shared.playdata.backup = new scoreData();
@@ -1222,9 +1227,11 @@ class Baddies extends Mono {//敵キャラ管理
     spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, bullets, scene);
     formation(type, x, y, n, name, pattern, bullets, scene) {
         //xまたはyは-1にするとランダムになるよ
+        const spawns = [];
         const size = datas.baddies[name].size;
+        const space = size + size * 0.25;
         const baseY = -size;
-        const spawn = (x, y) => this.spawn(x, y, name, pattern, bullets, scene);
+        const spawn = (x, y) => spawns.push(this.spawn(x, y, name, pattern, bullets, scene));
         const singleform = (isTop = false) => {
             if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
             if (y < 0) y = Util.rand(game.width - size) + size * 0.5;
@@ -1234,65 +1241,65 @@ class Baddies extends Mono {//敵キャラ管理
         const vform = (isReverse = false) => {
             const row = Math.floor(n * 0.5) + 1;
             if (x < 0) {
-                const w = size * (row * 2 - 1);
+                const w = space * (row * 2 - 1);
                 x = Util.rand(game.width - w) + w * 0.5;
             }
             for (let i = 0; i < row; i++) {
                 const col = isReverse ? (row - 1) - i : i;
-                if (col !== 0) spawn(x - (size * col), baseY + baseY * i);
-                spawn(x + (size * col), baseY + baseY * i);
+                if (col !== 0) spawn(x - (space * col), baseY - space * i);
+                spawn(x + (space * col), baseY - space * i);
             }
         }
         const triform = (isReverse = false) => {
             const row = Math.floor(n * 0.5) + 1;
             if (x < 0) {
-                const w = size * (row * 2 - 1);
+                const w = space * (row * 2 - 1);
                 x = Util.rand(game.width - w) + w * 0.5;
             }
             for (let i = 0; i < row; i++) {
                 const k = isReverse ? (row - 1) - i : i;
                 const col = k * 2 + 1;
                 for (let j = 0; j < col; j++) {
-                    spawn(x - (size * k) + (size * j), baseY + baseY * i);
+                    spawn(x - (space * k) + (space * j), baseY - space * i);
                 }
             }
         }
         const trailform = () => {
             if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
             for (let i = 0; i < n; i++) {
-                spawn(x, baseY + baseY * i);
+                spawn(x, baseY - space * i);
             }
         }
         const abrestform = () => {
             if (x < 0) {
-                const w = size * n;
+                const w = space * n;
                 x = Util.rand(game.width - w) + size * 0.5;
             }
             for (let i = 0; i < n; i++) {
-                spawn(x + (size * i), baseY);
+                spawn(x + (space * i), baseY);
             }
         }
         const sideform = (isR = false) => {
             if (y < 0) {
-                const h = size * n;
+                const h = (space) * n;
                 y = Util.rand(game.width - h) + size * 0.5;
             }
             const x = isR ? game.width + size : -size;
-            const w = Math.sign(x) * size * 0.25;
+            const w = Math.sign(x) * size * 0.5;
             for (let i = 0; i < n; i++) {
-                spawn(x + (w * i), y + (size * i));
+                spawn(x + (w * i), y + ((space) * i));
             }
         }
         const randomform = (isSide = false) => {
             const X = (isR) => isR ? game.width + size : -size;
-            const max = Math.floor(isSide ? (game.height * 0.6) / size : (game.width / size) - 1);
+            const max = Math.floor(isSide ? (game.height * 0.6) / space : (game.width / space) - 1);
             const ps = Util.randomArray(max, Util.rand(Math.min(n, max), 1));
             for (const p of ps) {
                 if (!isSide) {
-                    spawn(size * (p + 1), baseY + -Util.rand(size));
+                    spawn(space * (p + 1), baseY + -Util.rand(size));
                 } else {
                     const r = Util.rand(1);
-                    spawn(X(Boolean(r)) + (r === 1 ? 1 : -1) * Util.rand(size), size * (p + 1))
+                    spawn(X(Boolean(r)) + (r === 1 ? 1 : -1) * Util.rand(size), space * (p + 1))
                 }
             }
         }
@@ -1334,6 +1341,7 @@ class Baddies extends Mono {//敵キャラ管理
                 randomform(true);
                 break;
         }
+        return spawns;
     }
 }
 class Baddie extends Mono {//敵キャラ   
@@ -1353,9 +1361,9 @@ class Baddie extends Mono {//敵キャラ
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
-            this.anime.relativeDegForTime(0, size / 8, size / 240, { isLoop: true, isfirstRand: true });
+            this.anime.relativeDegForTime(0, size / 5, size / 240, { easing: Ease.sineout, isLoop: true, isfirstRand: true });
         } else {
-            this.anime.relativeDegForTime(90, size / 8, size / 240, { isLoop: true, isfirstRand: true });
+            this.anime.relativeDegForTime(90, size / 5, size / 240, { easing: Ease.sineout, isLoop: true, isfirstRand: true });
         }
     }
     whichSpawnType() {
@@ -1372,19 +1380,20 @@ class Baddie extends Mono {//敵キャラ
         return [result, isMoveVirtical];
     }
     *routineBasic(user, pattern, moveSpeed, shot) {
-        // user.state.start(function* () {
-        //     yield* waitForFrag(() => game.isWithin(user.pos.rect));
-        //     yield* shot();
-        // }());
+        user.state.start(function* () {
+            yield* waitForFrag(() => game.isWithin(user.pos.rect));
+            yield* shot();
+        }());
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
+                //move test
                 user.setAnime(isAnimeVirtical);
-                yield* user.move.relative(50, 0, 100, { easing: Ease.sineout, min: 0 });
-                yield* user.move.relative(-50, 0, 100, { easing: Ease.sineout, min: 0 });
+                //yield* user.move.relative(50, 0, 100, { easing: Ease.sineout, min: 0 });
+                //yield* user.move.relative(-50, 0, 100, { easing: Ease.sineout, min: 0 });
                 break;
             case Baddie.spawnType.top:
-
+                user.move.set(0, moveSpeed);
                 switch (pattern) {
                     case 0:
                         user.setAnime(isAnimeVirtical);
@@ -1395,11 +1404,12 @@ class Baddie extends Mono {//敵キャラ
                 }
                 break;
             case Baddie.spawnType.left:
-                user.ease.set2(0, moveSpeed, moveSpeed, { isPerpetual: true, ease: Ease.liner });
-
+                user.setAnime(isAnimeVirtical);
+                user.move.set(moveSpeed, 0);
                 break;
             case Baddie.spawnType.right:
-                user.ease.set2(180, moveSpeed, moveSpeed, { isPerpetual: true, ease: Ease.liner });
+                user.setAnime(isAnimeVirtical);
+                user.move.set(-moveSpeed, 0);
                 break;
         }
     }
@@ -1415,8 +1425,7 @@ class Baddie extends Mono {//敵キャラ
             yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         zako2: function* (user, pattern, bullets, scene) {
-            const maxMoveSpeed = game.width * 1.2;
-            const minMoveSpeed = game.width * 0.8;
+            const moveSpeed = 100;
             const shot1 = function* () {
                 yield* waitForFrag(() => game.isWithin(user.pos.rect));
                 yield* waitForTime(Util.rand(60) * game.delta);
@@ -1429,20 +1438,20 @@ class Baddie extends Mono {//敵キャラ
             user.setAnime(isAnimeVirtical);
             switch (spawnType) {
                 case Baddie.spawnType.left:
-                    yield* user.ease.set2(0, 0, maxMoveSpeed, { isAbsolute: true, ease: Ease.liner });
-                    yield* user.ease.set2(0, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sinein });
+                    yield* user.move.relative(0 - user.pos.x, 0, moveSpeed * 2);
+                    yield* user.move.relative(game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sineout, min: 0.5 });
                     user.state.start(shot1());
-                    yield* user.ease.set2(0, game.width * 0.2, minMoveSpeed, { ease: Ease.liner });
-                    yield* user.ease.set2(0, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sineout });
-                    yield* user.ease.set2(0, user.size, maxMoveSpeed, { ease: Ease.liner });
+                    yield* user.move.relative(game.width * 0.4, 0, moveSpeed, { easing: Ease.liner, min: 0 });
+                    yield* user.move.relative(game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sinein, min: 0.5 });
+                    yield* user.move.relative(user.pos.width, 0, moveSpeed * 2);
                     break;
                 case Baddie.spawnType.right:
-                    yield* user.ease.set2(180, game.width, maxMoveSpeed, { isAbsolute: true, ease: Ease.liner });
-                    yield* user.ease.set2(180, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sinein });
+                    yield* user.move.relative(game.width - user.pos.x, 0, moveSpeed * 2);
+                    yield* user.move.relative(-game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sineout, min: 0.5 });
                     user.state.start(shot1());
-                    yield* user.ease.set2(180, game.width * 0.2, minMoveSpeed, { ease: Ease.liner });
-                    yield* user.ease.set2(180, game.width * 0.4, maxMoveSpeed, { speedOffset: minMoveSpeed, ease: Ease.sineout });
-                    yield* user.ease.set2(180, user.size, maxMoveSpeed, { ease: Ease.liner });
+                    yield* user.move.relative(-game.width * 0.4, 0, moveSpeed, { easing: Ease.liner, min: 0 });
+                    yield* user.move.relative(-game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sinein, min: 0.5 });
+                    yield* user.move.relative(-user.pos.width, 0, moveSpeed * 2);
                     break;
                 default:
             }
@@ -1457,7 +1466,7 @@ class Baddie extends Mono {//敵キャラ
             }
             yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
-        boss1: function* (user, bullets, scene) {
+        boss1: function* (user, pattern, bullets, scene) {
             const circleShot = function* () {
                 const count = 36;
                 for (let i = 0; i < 6; i++) {
@@ -1518,9 +1527,17 @@ class Baddie extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
+            yield* user.move.to(user.pos.x, game.height * 0.3, 200,{easing:Ease.sinein});
+            const minionName = 'crow';
+            const minionCount = 5;
+            const distance = user.pos.width * 0.75;
+            const deg = 360 / minionCount;
+            for (let i = 0; i < minionCount; i++) {
+                const minion = scene.baddies.spawn(Util.degToX(deg * i) * distance, Util.degToY(deg * i) * distance, minionName, 0, bullets, scene);
+                minion.pos.parent = user;
+                console.log(minion.pos.left);
+            }
 
-            yield* waitForTime(0.5);
-            const guidedId = user.state.start(guidegShot());
             let currentPattern = 0;
 
             yield* user.state.startAndWait(multiwayShot());
@@ -1747,8 +1764,8 @@ export const datas = {//ゲームデータ
         obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
         crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
         dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
-        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.within]),
-        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle])
+        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
+        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 2000, 2000, 'boss1', [Baddies.form.topsingle])
     },
     player: {
         moveSpeed: 300,
