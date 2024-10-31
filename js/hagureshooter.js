@@ -389,18 +389,16 @@ class Pos {//座標コンポーネント
         this.parent = undefined;//座標リンクつける？
     }
     set(x, y, width, height) {
-        this._x = x;
-        this._y = y;
+        this.x = x;
+        this.y = y;
         this.width = width;
         this.height = height;
         return this;
     }
-    get x() { return this._x + (this.parent ? this.parent.pos.x : 0) }
-    set x(value) { this._x = value }
-    get y() { return this._y + (this.parent ? this.parent.pos.y : 0) }
-    set y(value) { this._y = value }
-    get left() { return Math.floor(this.x - this.align * this.width * 0.5) };
-    get top() { return Math.floor(this.y - this.valign * this.height * 0.5) };
+    get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0) }
+    get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0) }
+    get left() { return Math.floor(this.linkX - this.align * this.width * 0.5) };
+    get top() { return Math.floor(this.linkY - this.valign * this.height * 0.5) };
     get right() { return this.left + this.width; }
     get bottom() { return this.top + this.height; }
     get rect() { return this._rect.set(this.left, this.top, this.width, this.height) }
@@ -940,11 +938,11 @@ class ScenePlay extends Mono {//プレイ画面
     constructor() {
         super(new State(), new Child());
         this.elaps = 0;
-        //プレイヤー
+        //キャラ
         this.child.add(this.playerside = new Mono(new Child()));
-        this.child.add(this.playerbullets = new BulletBox());
-        //敵キャラ        
         this.child.add(this.baddies = new Baddies());
+        //弾
+        this.child.add(this.playerbullets = new BulletBox());
         this.child.add(this.baddiesbullets = new BulletBox());
         //パーティクル
         this.child.add(this.effect = new Tsubu());
@@ -1224,7 +1222,7 @@ class Baddies extends Mono {//敵キャラ管理
     static getMaxSpawn(size) {
         return Math.floor(game.width / size);
     }
-    spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, bullets, scene);
+    spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, this, bullets, scene);
     formation(type, x, y, n, name, pattern, bullets, scene) {
         //xまたはyは-1にするとランダムになるよ
         const spawns = [];
@@ -1348,14 +1346,16 @@ class Baddie extends Mono {//敵キャラ
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
         super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
+        this.graphic;
     }
-    set(x, y, name, pattern, bullets, scene) {
+    set(x, y, name, pattern, baddies, bullets, scene) {
         const data = datas.baddies[name];
         this.state.start(this.routines[data.routine](this, pattern, bullets, scene));
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.setHp(data.hp);
         this.unit.point = data.point;
+
         return this;
     }
     setAnime(isVirtical) {
@@ -1418,7 +1418,7 @@ class Baddie extends Mono {//敵キャラ
             const moveSpeed = 100;
             const shot1 = function* () {
                 while (true) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { count: 1, color: 'red' });
+                    bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
                     yield* waitForTime(2);
                 }
             }
@@ -1527,7 +1527,9 @@ class Baddie extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
-            yield* user.move.to(user.pos.x, game.height * 0.3, 200,{easing:Ease.sinein});
+            yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
+            user.setAnime();
+
             const minionName = 'crow';
             const minionCount = 5;
             const distance = user.pos.width * 0.75;
