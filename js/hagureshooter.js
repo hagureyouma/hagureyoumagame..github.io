@@ -411,7 +411,7 @@ class Move {//動作コンポーネント
     }
     reset() {
         this.set(0, 0);
-        this.setRevo(0, 0, 0);
+        this.setRevo(0);
     }
     set(vx, vy, speedChangeTime = 0, minSpeedVias = 0, easing = Ease.sineout) {
         this.vx = vx;
@@ -452,18 +452,16 @@ class Move {//動作コンポーネント
         const pos = this.owner.pos;
         return this.relativeForTime(x - pos.x, y - pos.y, time, { easing, isLoop, isfirstRand, min });
     }
-    setRevo(x, y, speedDeg) {
-        this.originX = x;
-        this.originY = y;
+    setRevo(speedDeg) {
         this.revo = speedDeg;
     }
     update() {
         const delta = this.ease.getCurrent();
         const pos = this.owner.pos;
         if (this.revo !== 0) {
-            const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, this.revo * delta);
-            pos.x = this.originX + x;
-            pos.y = this.originY + y;
+            const [x, y] = Util.degRotateXY(pos.x, pos.y, this.revo * delta);
+            pos.x = x;
+            pos.y = y;
         }
         pos.x += this.vx * delta;
         pos.y += this.vy * delta;
@@ -552,7 +550,7 @@ class Collision {//当たり判定コンポーネント
     set = (width, height) => this._rect.set(0, 0, width, height);
     get rect() {
         const pos = this.owner.pos;
-        return this._rect.set(Math.floor(pos.x - pos.align * this._rect.width * 0.5), Math.floor(pos.y - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
+        return this._rect.set(Math.floor(pos.linkX - pos.align * this._rect.width * 0.5), Math.floor(pos.linkY - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
     hit = (obj) => this.rect.isIntersect(obj.collision.rect);
     draw(ctx) {
@@ -803,7 +801,7 @@ class Tsubu extends Mono {//パーティクル
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y) {
+    emittCircle(count, distance, time, size, color, x, y, ease) {
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const t = this.child.pool(Tsubu.name);
@@ -812,7 +810,7 @@ class Tsubu extends Mono {//パーティクル
             t.pos.set(x, y, size, size);
             t.pos.align = 1;
             t.pos.valign = 1;
-            t.move.relativeDegForTime(deg * i, distance, time);
+            t.move.relativeDegForTime(deg * i, distance, time, { easing: ease || Ease.sineout });
         }
     }
 }
@@ -991,13 +989,14 @@ class ScenePlay extends Mono {//プレイ画面
             }
             targets.child.each((target) => {
                 if (!bullet.collision.hit(target)) return;
-                bullet.remove();
                 target.color.flash('crimson');
-                shared.playdata.total.point += 100;
-                if (!target.unit.isBanish(1)) return;
-                shared.playdata.total.point += target.unit.point;
-                this.effect.emittCircle(8, target.pos.width * 1.5, target.pos.width * 0.0125, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y, 0.97)
-                shared.playdata.total.ko += target.unit.defeat();
+                shared.playdata.total.point += bullet.bullet.point;
+                if (target.unit.isBanish(bullet.bullet.damage)) {
+                    shared.playdata.total.point += target.unit.point;
+                    this.effect.emittCircle(8, target.pos.width * 1.5, target.pos.width * 0.0125, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y)
+                    shared.playdata.total.ko += target.unit.defeat();
+                }
+                bullet.remove();
             })
         }
         this.baddies.child.each((baddie) => {
@@ -1068,9 +1067,9 @@ class ScenePlay extends Mono {//プレイ画面
 
         //     const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
         //     const spawnCount = Util.rand(spawnMax);
-        //     this.baddies.formation(formation, -1, -1, spawnCount, data.name, 0, this.baddiesbullets, this, 0);
-        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.within, 200, 200, spawnCount, data.name, 0, this.baddiesbullets, this, 0));            
-        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.left, -1, 100, 1, data.name, 0, this.baddiesbullets, this, 0));
+        //     this.baddies.formation(formation, -1, -1, spawnCount,-1, data.name, 0, this.baddiesbullets, this, 0);
+        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.within, 200, 200, spawnCount,0, data.name, 0, this.baddiesbullets, this, 0));            
+        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.left, -1, 100, 1,0, data.name, 0, this.baddiesbullets, this, 0));
         //     // const b = this.baddies.child.objs[0];
 
         //     // this.debug.clear();
@@ -1085,7 +1084,7 @@ class ScenePlay extends Mono {//プレイ画面
         {//ステージボス登場
             const data = datas.baddies[bossName];
             const formation = data.forms[0];
-            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, data.name, 0, this.baddiesbullets, this, 0);
+            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1,-1, data.name, 0, this.baddiesbullets, this, 0,undefined);
 
             this.bossHPgauge.isExist = true;
             this.bossHPgauge.max = boss.unit.maxHp;
@@ -1180,9 +1179,10 @@ class Player extends Mono {//プレイヤーキャラ
     *stateDefault(bullets, scene) {
         yield* waitForTime(0.5);
         this.unit.firing = false;
-        const shotOption = { deg: 90, count: 1, speed: datas.player.bulletSpeed, color: 'lime' };
-        const shotOption2 = { deg: 85, count: 1, speed: datas.player.bulletSpeed, color: 'lime' };
-        const shotOption3 = { deg: 95, count: 1, speed: datas.player.bulletSpeed, color: 'lime' };
+        const point = 100;
+        const shotOption = { deg: 90, count: 1, speed: datas.player.bulletSpeed, color: 'lime', point: point };
+        const shotOption2 = { deg: 85, count: 1, speed: datas.player.bulletSpeed, color: 'lime', point: point };
+        const shotOption3 = { deg: 95, count: 1, speed: datas.player.bulletSpeed, color: 'lime', point: point };
         while (true) {
             if (!this.unit.firing) {
                 yield undefined;
@@ -1211,7 +1211,7 @@ class Player extends Mono {//プレイヤーキャラ
     }
 }
 class Baddies extends Mono {//敵キャラ管理
-    static form = { within: 'within', v: 'v', delta: 'delta', tri: 'tri', inverttri: 'inverttri', trail: 'trail', abrest: 'abrest', topsingle: 'topsingle', left: 'left', right: 'right', randomtop: 'randomtop', randomside: 'randomside' };
+    static form = { within: 'within', circle: 'circle', v: 'v', delta: 'delta', tri: 'tri', inverttri: 'inverttri', trail: 'trail', abrest: 'abrest', topsingle: 'topsingle', left: 'left', right: 'right', randomtop: 'randomtop', randomside: 'randomside' };
     static {
         Object.freeze(Baddies.form);
     }
@@ -1222,19 +1222,26 @@ class Baddies extends Mono {//敵キャラ管理
     static getMaxSpawn(size) {
         return Math.floor(game.width / size);
     }
-    spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, this, bullets, scene);
-    formation(type, x, y, n, name, pattern, bullets, scene) {
+    spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, bullets, scene);
+    formation(type, x, y, n, s, name, pattern, bullets, scene, parent) {
         //xまたはyは-1にするとランダムになるよ
-        const spawns = [];
+        const spawnsQueue = [];
         const size = datas.baddies[name].size;
-        const space = size + size * 0.25;
+        const space = size + size * s > 0 ? s : 0.25;
         const baseY = -size;
-        const spawn = (x, y) => spawns.push(this.spawn(x, y, name, pattern, bullets, scene));
+        const spawn = (x, y) => spawnsQueue.push([x, y]);
         const singleform = (isTop = false) => {
             if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
             if (y < 0) y = Util.rand(game.width - size) + size * 0.5;
             if (isTop) y = baseY;
             spawn(x, y);
+        }
+        const circleform = () => {
+            const d = s > 0 ? s : size * 2;
+            const deg = 360 / n;
+            for (let i = 0; i < n; i++) {
+                spawn(Util.degToX(deg * i) * d, Util.degToY(deg * i) * d);
+            }
         }
         const vform = (isReverse = false) => {
             const row = Math.floor(n * 0.5) + 1;
@@ -1305,6 +1312,9 @@ class Baddies extends Mono {//敵キャラ管理
             case Baddies.form.within:
                 singleform();
                 break;
+            case Baddies.form.circle:
+                circleform();
+                break;
             case Baddies.form.topsingle:
                 singleform(true);
                 break;
@@ -1339,23 +1349,40 @@ class Baddies extends Mono {//敵キャラ管理
                 randomform(true);
                 break;
         }
-        return spawns;
+        switch (type) {
+            case Baddies.form.within:
+            case Baddies.form.circle:
+                const time = target.pos.width * 0.0125
+                scene.effect.emittCircle(8, target.pos.width * 1.5, time, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y, Ease.sinein);
+                return spawnWithEffect(time);
+            default:
+        }
+        const spawning = () => {
+            for (const [x, y] of spawnsQueue) {
+                const baddie = this.spawn (x, y, name, pattern, bullets, scene);
+                baddie.pos.parent = parent;
+            }
+        }
+        const spawnWithEffect = function* (time) {
+            yield* waitForTime(time);
+            spawning();
+        }
+        spawning();
+        return spawnsQueue;
     }
 }
 class Baddie extends Mono {//敵キャラ   
     static spawnType = { within: 0, top: 1, left: 2, right: 3 }
     constructor() {
         super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
-        this.graphic;
     }
-    set(x, y, name, pattern, baddies, bullets, scene) {
+    set(x, y, name, pattern, bullets, scene) {
         const data = datas.baddies[name];
         this.state.start(this.routines[data.routine](this, pattern, bullets, scene));
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.setHp(data.hp);
         this.unit.point = data.point;
-
         return this;
     }
     setAnime(isVirtical) {
@@ -1528,17 +1555,16 @@ class Baddie extends Mono {//敵キャラ
                 }
             }
             yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
-            user.setAnime();
+            //user.setAnime();
 
             const minionName = 'crow';
             const minionCount = 5;
             const distance = user.pos.width * 0.75;
             const deg = 360 / minionCount;
-            for (let i = 0; i < minionCount; i++) {
-                const minion = scene.baddies.spawn(Util.degToX(deg * i) * distance, Util.degToY(deg * i) * distance, minionName, 0, bullets, scene);
-                minion.pos.parent = user;
-                console.log(minion.pos.left);
-            }
+
+            yield* scene.baddies.formation(Baddies.form.circle,-1,-1,minionCount,distance,minionName,0,bullets,scene,user);
+
+
 
             let currentPattern = 0;
 
@@ -1571,13 +1597,25 @@ class Baddie extends Mono {//敵キャラ
         }
     }
 }
+class Bullet {
+    constructor() {
+        this.reset();
+    }
+    reset() {
+        this.set(1, 0)
+    }
+    set(damage, point) {
+        this.damage = damage;
+        this.point = point;
+    }
+}
 class BulletBox extends Mono {//弾
     constructor() {
         super(new Child());
         this.child.drawlayer = 'effect';
-        this.child.addCreator('bullet', () => new Mono(new Guided(), new Move(), new Collision(), new Brush()));
+        this.child.addCreator('bullet', () => new Mono(new Guided(), new Move(), new Collision(), new Brush(), new Bullet()));
     }
-    firing(x, y, vx, vy, color) {
+    firing(x, y, vx, vy, color, damage, point) {
         const bullet = this.child.pool('bullet');
         bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
@@ -1586,28 +1624,29 @@ class BulletBox extends Mono {//弾
         bullet.collision.set(6, 6);
         bullet.brush.circle();
         bullet.brush.color = color;
+        bullet.bullet.set(damage, point);
         return bullet;
     }
-    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0 } = {}) {
+    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0, damage = 1, point = 0 } = {}) {
         let d = deg;
         if (aim) d = Util.xyToDeg(aim.pos.x - x, aim.pos.y - y);
         const offset = space * (count - 1) / 2;
         const result = [];
         for (let i = 0; i < count; i++) {
-            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color);
+            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color, damage, point);
             if (guided) {
                 bullet.guided.target = guided;
                 bullet.guided.aimSpeed = guidedSpeed;
-                bullet.move.vc = 1.03;
+                //bullet.move.vc = 1.03;
             }
         }
         return result;
     }
-    circle(x, y, { count = 36, offset = 0, speed = 150, color = 'red', } = {}) {
+    circle(x, y, { count = 36, offset = 0, speed = 150, color = 'red', damage = 1, point = 0 } = {}) {
         const d = 360 / count;
         const result = [];
         for (let i = 0; i < count; i++) {
-            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, color);
+            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, color, damage, point);
         }
         return result;
     }
