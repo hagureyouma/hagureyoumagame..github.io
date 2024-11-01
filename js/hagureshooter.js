@@ -413,7 +413,7 @@ class Move {//動作コンポーネント
         this.set(0, 0);
         this.setRevo(0);
     }
-    set(vx, vy, speedChangeTime = 0, minSpeedVias = 0, easing = Ease.sineout) {
+    set(vx, vy, speedChangeTime = 0, minSpeedVias = 0, easing = Ease.sinein) {
         this.vx = vx;
         this.vy = vy;
         if (speedChangeTime === 0) {
@@ -473,6 +473,7 @@ class Ease {//イージング
     static liner = (t) => t;
     static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
     static sineout = (t) => Math.sin(t * Math.PI / 2);
+    static sineInOut = (t) => -(Math.cos(t * Math.PI) - 1) / 2;
     constructor() {
         this.reset();
     }
@@ -793,15 +794,13 @@ class Tsubu extends Mono {//パーティクル
         this.child.addCreator(Tsubu.name, () => {
             const t = new Mono(new Move(), new Brush());
             t.update = () => {
-                if (!t.move.isActive) {
-                    t.remove();
-                }
+                if (!t.move.isActive) t.remove();
                 t.brush.alpha = 1 - t.move.percentage;
             }
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y, ease) {
+    emittCircle(count, distance, time, size, color, x, y) {
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const t = this.child.pool(Tsubu.name);
@@ -810,7 +809,20 @@ class Tsubu extends Mono {//パーティクル
             t.pos.set(x, y, size, size);
             t.pos.align = 1;
             t.pos.valign = 1;
-            t.move.relativeDegForTime(deg * i, distance, time, { easing: ease || Ease.sineout });
+            t.move.relativeDegForTime(deg * i, distance, time);
+        }
+    }
+    emittConvergeCircle(count, distance, time, size, color, x, y) {
+        const deg = 360 / count;
+        for (let i = 0; i < count; i++) {
+            const cd = deg * i;
+            const t = this.child.pool(Tsubu.name);
+            t.brush.color = color;
+            t.brush.alpha = 1;
+            t.pos.set(x + Util.degToX(cd) * distance, y + Util.degToY(cd) * distance, size, size);
+            t.pos.align = 1;
+            t.pos.valign = 1;
+            t.move.relativeDegForTime((cd + 180) % 360, distance, time);
         }
     }
 }
@@ -1000,6 +1012,7 @@ class ScenePlay extends Mono {//プレイ画面
             })
         }
         this.baddies.child.each((baddie) => {
+            if (baddie.unit.isEnableWithout) return;
             if (!baddie.unit.isEntry) {
                 if (!game.isOutOfRange(baddie.collision.rect)) baddie.unit.isEntry = true;
             } else {
@@ -1067,10 +1080,7 @@ class ScenePlay extends Mono {//プレイ画面
 
         //     const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
         //     const spawnCount = Util.rand(spawnMax);
-        //     this.baddies.formation(formation, -1, -1, spawnCount,-1, data.name, 0, this.baddiesbullets, this, 0);
-        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.within, 200, 200, spawnCount,0, data.name, 0, this.baddiesbullets, this, 0));            
-        //     //this.state.start(this.baddies.formation.call(this.baddies, Baddies.form.left, -1, 100, 1,0, data.name, 0, this.baddiesbullets, this, 0));
-        //     // const b = this.baddies.child.objs[0];
+        //     this.state.start(this.baddies.formation.call(this.baddies,formation, -1, -1, spawnCount,-1, data.name, 0, this.baddiesbullets, this, 0));
 
         //     // this.debug.clear();
         //     // this.debug.add(() => b.pos.x);
@@ -1084,19 +1094,11 @@ class ScenePlay extends Mono {//プレイ画面
         {//ステージボス登場
             const data = datas.baddies[bossName];
             const formation = data.forms[0];
-            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1,-1, data.name, 0, this.baddiesbullets, this, 0,undefined);
-
+            const [boss] = yield* this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
             this.bossHPgauge.isExist = true;
             this.bossHPgauge.max = boss.unit.maxHp;
             this.bossHPgauge.watch = () => boss.unit.hp;
             this.ui.child.add(this.bossHPgauge);
-
-            this.debug.clear();
-            this.debug.add(() => `タイム: ${shared.playdata.total.time}`);
-            this.debug.add(() => `X座標: ${boss.pos.x}`);
-            this.debug.add(() => `Y座標: ${boss.pos.y}`);
-            this.debug.add(() => `: ${-Math.sin(this.elaps * Math.PI)}`);
-
             yield* waitForFrag(() => boss.unit.isDefeat);
             this.bossHPgauge.remove();
         }
@@ -1137,7 +1139,7 @@ class Unit {//キャラのステータス
     }
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
-        this.isEntry = this.invincible = this.firing = false;
+        this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;
     }
     setHp(hp) {
         this.hp = this.maxHp = hp;
@@ -1222,25 +1224,25 @@ class Baddies extends Mono {//敵キャラ管理
     static getMaxSpawn(size) {
         return Math.floor(game.width / size);
     }
-    spawn = (x, y, name, pattern, bullets, scene) => this.child.pool(name).set(x, y, name, pattern, bullets, scene);
-    formation(type, x, y, n, s, name, pattern, bullets, scene, parent) {
+    spawn = (x, y, name, pattern, bullets, scene, parent) => this.child.pool(name).set(x, y, name, pattern, bullets, scene, parent);
+    *formation(type, x, y, n, s, name, pattern, bullets, scene, parent) {
         //xまたはyは-1にするとランダムになるよ
-        const spawnsQueue = [];
+        const poss = [];
         const size = datas.baddies[name].size;
-        const space = size + size * s > 0 ? s : 0.25;
+        const space = size + size * (s > 0 ? s : 0.25);
         const baseY = -size;
-        const spawn = (x, y) => spawnsQueue.push([x, y]);
+        const push = (x, y) => poss.push([x, y]);
         const singleform = (isTop = false) => {
             if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
             if (y < 0) y = Util.rand(game.width - size) + size * 0.5;
             if (isTop) y = baseY;
-            spawn(x, y);
+            push(x, y);
         }
         const circleform = () => {
             const d = s > 0 ? s : size * 2;
             const deg = 360 / n;
             for (let i = 0; i < n; i++) {
-                spawn(Util.degToX(deg * i) * d, Util.degToY(deg * i) * d);
+                push(Util.degToX(deg * i) * d, Util.degToY(deg * i) * d);
             }
         }
         const vform = (isReverse = false) => {
@@ -1251,8 +1253,8 @@ class Baddies extends Mono {//敵キャラ管理
             }
             for (let i = 0; i < row; i++) {
                 const col = isReverse ? (row - 1) - i : i;
-                if (col !== 0) spawn(x - (space * col), baseY - space * i);
-                spawn(x + (space * col), baseY - space * i);
+                if (col !== 0) push(x - (space * col), baseY - space * i);
+                push(x + (space * col), baseY - space * i);
             }
         }
         const triform = (isReverse = false) => {
@@ -1265,14 +1267,14 @@ class Baddies extends Mono {//敵キャラ管理
                 const k = isReverse ? (row - 1) - i : i;
                 const col = k * 2 + 1;
                 for (let j = 0; j < col; j++) {
-                    spawn(x - (space * k) + (space * j), baseY - space * i);
+                    push(x - (space * k) + (space * j), baseY - space * i);
                 }
             }
         }
         const trailform = () => {
             if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
             for (let i = 0; i < n; i++) {
-                spawn(x, baseY - space * i);
+                push(x, baseY - space * i);
             }
         }
         const abrestform = () => {
@@ -1281,7 +1283,7 @@ class Baddies extends Mono {//敵キャラ管理
                 x = Util.rand(game.width - w) + size * 0.5;
             }
             for (let i = 0; i < n; i++) {
-                spawn(x + (space * i), baseY);
+                push(x + (space * i), baseY);
             }
         }
         const sideform = (isR = false) => {
@@ -1292,7 +1294,7 @@ class Baddies extends Mono {//敵キャラ管理
             const x = isR ? game.width + size : -size;
             const w = Math.sign(x) * size * 0.5;
             for (let i = 0; i < n; i++) {
-                spawn(x + (w * i), y + ((space) * i));
+                push(x + (w * i), y + ((space) * i));
             }
         }
         const randomform = (isSide = false) => {
@@ -1301,10 +1303,10 @@ class Baddies extends Mono {//敵キャラ管理
             const ps = Util.randomArray(max, Util.rand(Math.min(n, max), 1));
             for (const p of ps) {
                 if (!isSide) {
-                    spawn(space * (p + 1), baseY + -Util.rand(size));
+                    push(space * (p + 1), baseY + -Util.rand(size));
                 } else {
                     const r = Util.rand(1);
-                    spawn(X(Boolean(r)) + (r === 1 ? 1 : -1) * Util.rand(size), space * (p + 1))
+                    push(X(Boolean(r)) + (r === 1 ? 1 : -1) * Util.rand(size), space * (p + 1))
                 }
             }
         }
@@ -1352,23 +1354,22 @@ class Baddies extends Mono {//敵キャラ管理
         switch (type) {
             case Baddies.form.within:
             case Baddies.form.circle:
-                const time = target.pos.width * 0.0125
-                scene.effect.emittCircle(8, target.pos.width * 1.5, time, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y, Ease.sinein);
-                return spawnWithEffect(time);
+                const time = size * 0.005;
+                for (const [x, y] of poss) {
+                    let ex = x;
+                    let ey = y;
+                    if (parent) {
+                        ex += parent.pos.linkX;
+                        ey += parent.pos.linkY;
+                    }
+                    scene.effect.emittConvergeCircle(8, size * 1.5, time, size * 0.2, 'white', ex, ey);
+                }
+                yield* waitForTime(time * 0.5);
             default:
         }
-        const spawning = () => {
-            for (const [x, y] of spawnsQueue) {
-                const baddie = this.spawn (x, y, name, pattern, bullets, scene);
-                baddie.pos.parent = parent;
-            }
-        }
-        const spawnWithEffect = function* (time) {
-            yield* waitForTime(time);
-            spawning();
-        }
-        spawning();
-        return spawnsQueue;
+        const baddies = [];
+        for (const [x, y] of poss) baddies.push(this.spawn(x, y, name, pattern, bullets, scene, parent));
+        return baddies;
     }
 }
 class Baddie extends Mono {//敵キャラ   
@@ -1376,9 +1377,10 @@ class Baddie extends Mono {//敵キャラ
     constructor() {
         super(new State(), new Move(), new Anime(), new Moji(), new Collision(), new Unit());
     }
-    set(x, y, name, pattern, bullets, scene) {
+    set(x, y, name, pattern, bullets, scene, parent) {
         const data = datas.baddies[name];
         this.state.start(this.routines[data.routine](this, pattern, bullets, scene));
+        this.pos.parent = parent;
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.setHp(data.hp);
@@ -1514,34 +1516,27 @@ class Baddie extends Mono {//敵キャラ
             }
             const ringShot = function* (isOneTime) {
                 do {
-                    const speed = 50;
-                    const bs = bullets.circle(user.pos.x, user.pos.y, { count: 18, color: 'lime' });
+                    const speed = 500;
+                    const bs = bullets.circle(user.pos.x, user.pos.y, { speed: 250, count: 18, color: 'lime' });
                     yield* waitForTime(0.5);
                     for (const b of bs) {
                         const [x, y] = Util.normalize(scene.player.pos.x - b.pos.x, scene.player.pos.y - b.pos.y);
-                        b.move.set(x * speed, y * speed, 1.03);
+                        b.move.set(x * speed, y * speed, 2, 0);
                     }
                     yield* waitForTime(1);
                 } while (!isOneTime);
             }
-            const fanShot = function* () {
+            const fanShot = function* (rangeDeg = 45, radiantSpeed = 180, bulletSpeed = 400) {
                 const timeOfs = game.sec;
-                while (true) {
-                    for (let i = 0; i < 60; i++) {
-                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (20 * Util.degToX((game.sec - timeOfs) * 120)), count: 1, speed: 400, color: 'aqua' });
-                        yield* waitForTime(0.05);
-                    }
-                    yield* waitForTime(1);
+                for (let i = 0; i < 60; i++) {
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), count: 1, speed: bulletSpeed, color: 'aqua' });
+                    yield* waitForTime(0.125);
                 }
             }
-            const guidegShot = function* () {
-                yield* waitForTime(2);
-                while (true) {
-                    for (let j = 0; j < 3; j++) {
-                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, count: 4, space: 25, speed: 25, color: 'white', target: scene.player, aimSpeed: 1.5 });
-                        yield* waitForTime(1);
-                    }
-                    yield* waitForTime(3);
+            const guidedShot = function* () {
+                for (let j = 0; j < 3; j++) {
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, count: 4, space: 25, speed: 500, color: 'white', target: scene.player, aimSpeed: 1.5 });
+                    yield* waitForTime(1);
                 }
             }
             const multiwayShot = function* () {
@@ -1554,38 +1549,46 @@ class Baddie extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
-            yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
+            const minionName = 'crow';
+            const minionCount = 7;
+            const summonMinions = function* (name, count) {
+                const minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, user.pos.width * 0.75, name, 0, bullets, scene, user);
+                for (const minion of minions) {
+                    minion.move.setRevo(60);
+                }
+            }
+            const resetPos = function* () {
+                yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
+            }
+            yield* resetPos();
             //user.setAnime();
 
-            const minionName = 'crow';
-            const minionCount = 5;
-            const distance = user.pos.width * 0.75;
-            const deg = 360 / minionCount;
-
-            yield* scene.baddies.formation(Baddies.form.circle,-1,-1,minionCount,distance,minionName,0,bullets,scene,user);
 
 
+            while (user.unit.hpRatio > 0.5) {
+                yield* summonMinions(minionName, minionCount);
+                yield* user.state.startAndWait(fanShot());
+                yield* waitForTime(2);
+                yield* user.state.startAndWait(ringShot(true));
+                yield* waitForTime(2);
+                yield* user.state.startAndWait(guidedShot(true));
+                yield* waitForTime(2);
+            }
+            while (user.unit.hpRatio > 0.5) {
+                yield* user.state.startAndWait(fanShot());
+                yield* waitForTime(2);
+                yield* user.state.startAndWait(circleShot());
+                yield* waitForTime(2);
+                yield* user.state.startAndWait(spiralShot());
+                yield* waitForTime(2);
+                yield* user.state.startAndWait(ringShot(true));
+                yield* waitForTime(2);
+            }
 
-            let currentPattern = 0;
 
             yield* user.state.startAndWait(multiwayShot());
 
 
-            while (user.unit.hpRatio > 0.5) {
-                switch (currentPattern) {
-                    case 0:
-                        yield* user.state.startAndWait(circleShot());
-                        break;
-                    case 1:
-                        yield* user.state.startAndWait(spiralShot());
-                        break;
-                    case 2:
-                        yield* user.state.startAndWait(ringShot(true));
-                        break;
-                }
-                yield* waitForTime(2);
-                currentPattern = (currentPattern + 1) % 3;
-            }
             user.state.start(ringShot(false));
             while (true) {
                 const spiralId = user.state.start(spiralShot());
@@ -1597,7 +1600,7 @@ class Baddie extends Mono {//敵キャラ
         }
     }
 }
-class Bullet {
+class Bullet {//弾コンポーネント
     constructor() {
         this.reset();
     }
@@ -1637,7 +1640,7 @@ class BulletBox extends Mono {//弾
             if (guided) {
                 bullet.guided.target = guided;
                 bullet.guided.aimSpeed = guidedSpeed;
-                //bullet.move.vc = 1.03;
+                bullet.move.set(0, 0, 2, 0);
             }
         }
         return result;
