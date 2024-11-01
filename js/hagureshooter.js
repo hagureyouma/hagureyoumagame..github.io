@@ -386,7 +386,7 @@ class Pos {//座標コンポーネント
         this.set(0, 0, 0, 0);
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
-        this.parent = undefined;//座標リンクつける？
+        this.parent = undefined;
     }
     set(x, y, width, height) {
         this.x = x;
@@ -535,7 +535,7 @@ class Guided {//ホーミングコンポーネント
         if (!this.target) return;
         const pos = this.owner.pos;
         const move = this.owner.move;
-        const r = (Util.cross(this.target.pos.x - pos.x, this.target.pos.y - pos.y, move.vx, move.vy) > 0 ? -this.aimSpeed : this.aimSpeed);
+        const r = (Util.cross(this.target.pos.linkX - pos.linkX, this.target.pos.linkY - pos.linkY, move.vx, move.vy) > 0 ? -this.aimSpeed : this.aimSpeed);
         const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, r);
         move.vx = x;
         move.vy = y;
@@ -628,22 +628,6 @@ class Child {//コンテナコンポーネント
             func(obj);
         }
     }
-}
-class Jumyo {//オブジェクトの寿命コンポーネント
-    constructor() {
-        this.reset();
-    }
-    reset() {
-        this.lifeSpan = this.lifeStage = 0;
-    }
-    update() {
-        if (this.lifeStage < this.lifeSpan) {
-            this.lifeStage = Math.min(this.lifeStage + game.delta, this.lifeSpan);
-            return;
-        }
-        this.owner.remove();
-    }
-    get percentage() { return this.lifeStage / this.lifeSpan };
 }
 class Color {//色コンポーネント
     constructor() {
@@ -744,7 +728,7 @@ class Brush {//図形描画コンポーネント
     rect = () => this.drawer = (ctx, pos) => ctx.fillRect(pos.left, pos.top, pos.width, pos.height);
     circle = () => this.drawer = (ctx, pos) => {
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, pos.width * 0.5, 0, Brush.rad);
+        ctx.arc(pos.linkX, pos.linkY, pos.width * 0.5, 0, Brush.rad);
         ctx.fill();
     }
     draw(ctx) {
@@ -1005,7 +989,7 @@ class ScenePlay extends Mono {//プレイ画面
                 shared.playdata.total.point += bullet.bullet.point;
                 if (target.unit.isBanish(bullet.bullet.damage)) {
                     shared.playdata.total.point += target.unit.point;
-                    this.effect.emittCircle(8, target.pos.width * 1.5, target.pos.width * 0.0125, target.pos.width * 0.2, target.color.baseColor, target.pos.x, target.pos.y)
+                    this.effect.emittCircle(8, target.pos.width * 1.5, target.pos.width * 0.0125, target.pos.width * 0.2, target.color.baseColor, target.pos.linkX, target.pos.linkY);
                     shared.playdata.total.ko += target.unit.defeat();
                 }
                 bullet.remove();
@@ -1220,9 +1204,6 @@ class Baddies extends Mono {//敵キャラ管理
     constructor() {
         super(new Child());
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Baddie());
-    }
-    static getMaxSpawn(size) {
-        return Math.floor(game.width / size);
     }
     spawn = (x, y, name, pattern, bullets, scene, parent) => this.child.pool(name).set(x, y, name, pattern, bullets, scene, parent);
     *formation(type, x, y, n, s, name, pattern, bullets, scene, parent) {
@@ -1535,10 +1516,10 @@ class Baddie extends Mono {//敵キャラ
             }
             const guidedShot = function* () {
                 for (let j = 0; j < 3; j++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, count: 4, space: 25, speed: 500, color: 'white', target: scene.player, aimSpeed: 1.5 });
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500, color: 'white', guided: scene.player, aimSpeed: 1.5 });
                     yield* waitForTime(1);
                 }
-            }
+            }       
             const multiwayShot = function* () {
                 while (true) {
                     yield undefined;
@@ -1550,9 +1531,12 @@ class Baddie extends Mono {//敵キャラ
                 }
             }
             const minionName = 'crow';
-            const minionCount = 7;
-            const summonMinions = function* (name, count) {
-                const minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, user.pos.width * 0.75, name, 0, bullets, scene, user);
+            let minions=[];
+            const summonMinions = function* (name, count,distance) {
+                for (const minion of minions) {
+                    if(minion.isExist)return;
+                }
+                minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count,distance, name, 0, bullets, scene, user);
                 for (const minion of minions) {
                     minion.move.setRevo(60);
                 }
@@ -1563,10 +1547,10 @@ class Baddie extends Mono {//敵キャラ
             yield* resetPos();
             //user.setAnime();
 
-
-
             while (user.unit.hpRatio > 0.5) {
-                yield* summonMinions(minionName, minionCount);
+                yield* summonMinions(minionName, 7,user.pos.width * 0.75);
+                yield* user.state.startAndWait(guidedShot(true));
+                yield* waitForTime(2);
                 yield* user.state.startAndWait(fanShot());
                 yield* waitForTime(2);
                 yield* user.state.startAndWait(ringShot(true));
@@ -1574,7 +1558,7 @@ class Baddie extends Mono {//敵キャラ
                 yield* user.state.startAndWait(guidedShot(true));
                 yield* waitForTime(2);
             }
-            while (user.unit.hpRatio > 0.5) {
+            while (user.unit.hpRatio > 0.25) {
                 yield* user.state.startAndWait(fanShot());
                 yield* waitForTime(2);
                 yield* user.state.startAndWait(circleShot());
@@ -1584,11 +1568,6 @@ class Baddie extends Mono {//敵キャラ
                 yield* user.state.startAndWait(ringShot(true));
                 yield* waitForTime(2);
             }
-
-
-            yield* user.state.startAndWait(multiwayShot());
-
-
             user.state.start(ringShot(false));
             while (true) {
                 const spiralId = user.state.start(spiralShot());
@@ -1638,9 +1617,7 @@ class BulletBox extends Mono {//弾
         for (let i = 0; i < count; i++) {
             const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color, damage, point);
             if (guided) {
-                bullet.guided.target = guided;
-                bullet.guided.aimSpeed = guidedSpeed;
-                bullet.move.set(0, 0, 2, 0);
+                bullet.guided.set(guided,guidedSpeed,0,2);
             }
         }
         return result;
