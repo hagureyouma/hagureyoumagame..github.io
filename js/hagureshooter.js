@@ -536,7 +536,7 @@ class Guided {//ホーミングコンポーネント
         const pos = this.owner.pos;
         const move = this.owner.move;
         const r = (Util.cross(this.target.pos.linkX - pos.linkX, this.target.pos.linkY - pos.linkY, move.vx, move.vy) > 0 ? -this.aimSpeed : this.aimSpeed);
-        const [x, y] = Util.degRotateXY(pos.x - this.originX, pos.y - this.originY, r);
+        const [x, y] = Util.degRotateXY(move.vx, move.vy,r);
         move.vx = x;
         move.vy = y;
     }
@@ -1516,7 +1516,7 @@ class Baddie extends Mono {//敵キャラ
             }
             const guidedShot = function* () {
                 for (let j = 0; j < 3; j++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500, color: 'white', guided: scene.player, aimSpeed: 1.5 });
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500, color: 'white', guided: scene.player, guidedSpeed: 1.5 });
                     yield* waitForTime(1);
                 }
             }       
