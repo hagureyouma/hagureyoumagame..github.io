@@ -413,9 +413,12 @@ class Move {//動作コンポーネント
         this.set(0, 0);
         this.setRevo(0);
     }
-    set(vx, vy, speedChangeTime = 0, minSpeedVias = 0, easing = Ease.sinein) {
+    set(vx, vy) {
         this.vx = vx;
         this.vy = vy;
+        this.setChangeSpeed();
+    }
+    setChangeSpeed(speedChangeTime = 0, minSpeedVias = 0, easing = Ease.sinein) {
         if (speedChangeTime === 0) {
             this.ease.reset();
             this.ease.isDelta = true;
@@ -529,14 +532,14 @@ class Guided {//ホーミングコンポーネント
     set(target, aimSpeed, firstSpeed, accelTime) {
         this.target = target;
         this.aimSpeed = aimSpeed;
-        this.owner.move.set(0, 0, accelTime, firstSpeed, Ease.sinein);
+        this.owner.move.setChangeSpeed(accelTime, firstSpeed, Ease.sinein);
     }
     update() {
         if (!this.target) return;
         const pos = this.owner.pos;
         const move = this.owner.move;
         const r = (Util.cross(this.target.pos.linkX - pos.linkX, this.target.pos.linkY - pos.linkY, move.vx, move.vy) > 0 ? -this.aimSpeed : this.aimSpeed);
-        const [x, y] = Util.degRotateXY(move.vx, move.vy,r);
+        const [x, y] = Util.degRotateXY(move.vx, move.vy, r);
         move.vx = x;
         move.vy = y;
     }
@@ -1516,10 +1519,10 @@ class Baddie extends Mono {//敵キャラ
             }
             const guidedShot = function* () {
                 for (let j = 0; j < 3; j++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500, color: 'white', guided: scene.player, guidedSpeed: 1.5 });
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500,firstSpeed:0,accelTime:3, color: 'white', guided: scene.player, guidedSpeed: 2 });
                     yield* waitForTime(1);
                 }
-            }       
+            }
             const multiwayShot = function* () {
                 while (true) {
                     yield undefined;
@@ -1531,12 +1534,12 @@ class Baddie extends Mono {//敵キャラ
                 }
             }
             const minionName = 'crow';
-            let minions=[];
-            const summonMinions = function* (name, count,distance) {
+            let minions = [];
+            const summonMinions = function* (name, count, distance) {
                 for (const minion of minions) {
-                    if(minion.isExist)return;
+                    if (minion.isExist) return;
                 }
-                minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count,distance, name, 0, bullets, scene, user);
+                minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
                 for (const minion of minions) {
                     minion.move.setRevo(60);
                 }
@@ -1548,7 +1551,7 @@ class Baddie extends Mono {//敵キャラ
             //user.setAnime();
 
             while (user.unit.hpRatio > 0.5) {
-                yield* summonMinions(minionName, 7,user.pos.width * 0.75);
+                yield* summonMinions(minionName, 7, user.pos.width * 0.75);
                 yield* user.state.startAndWait(guidedShot(true));
                 yield* waitForTime(2);
                 yield* user.state.startAndWait(fanShot());
@@ -1597,36 +1600,35 @@ class BulletBox extends Mono {//弾
         this.child.drawlayer = 'effect';
         this.child.addCreator('bullet', () => new Mono(new Guided(), new Move(), new Collision(), new Brush(), new Bullet()));
     }
-    firing(x, y, vx, vy, color, damage, point) {
+    firing(x, y, vx, vy, firstSpeed, accelTime, color, damage, point) {
         const bullet = this.child.pool('bullet');
         bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
         bullet.pos.valign = 1;
         bullet.move.set(vx, vy);
+        bullet.move.setChangeSpeed(accelTime, firstSpeed);
         bullet.collision.set(6, 6);
         bullet.brush.circle();
         bullet.brush.color = color;
         bullet.bullet.set(damage, point);
         return bullet;
     }
-    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0, damage = 1, point = 0 } = {}) {
+    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0, damage = 1, point = 0 } = {}) {
         let d = deg;
         if (aim) d = Util.xyToDeg(aim.pos.x - x, aim.pos.y - y);
         const offset = space * (count - 1) / 2;
         const result = [];
         for (let i = 0; i < count; i++) {
-            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, color, damage, point);
-            if (guided) {
-                bullet.guided.set(guided,guidedSpeed,0,2);
-            }
+            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, firstSpeed, accelTime, color, damage, point);
+            if (guided) bullet.guided.set(guided, guidedSpeed, 0, 2);
         }
         return result;
     }
-    circle(x, y, { count = 36, offset = 0, speed = 150, color = 'red', damage = 1, point = 0 } = {}) {
+    circle(x, y, { count = 36, offset = 0, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', damage = 1, point = 0 } = {}) {
         const d = 360 / count;
         const result = [];
         for (let i = 0; i < count; i++) {
-            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, color, damage, point);
+            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, firstSpeed, accelTime, color, damage, point);
         }
         return result;
     }
@@ -1786,7 +1788,7 @@ export const datas = {//ゲームデータ
         crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
         dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
         bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
-        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 2000, 2000, 'boss1', [Baddies.form.topsingle])
+        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 500, 2000, 'boss1', [Baddies.form.topsingle])
     },
     player: {
         moveSpeed: 300,
