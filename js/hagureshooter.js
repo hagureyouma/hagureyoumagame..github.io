@@ -1015,7 +1015,7 @@ class ScenePlay extends Mono {//プレイ画面
         game.pushScene(this);
         while (true) {
             yield undefined;
-            if (this.isClear) {
+            if (this.isClear) {//ステージクリアした
                 yield* this.showTelop(text.stageclear, 2);
                 shared.playdata.total.stage++;
                 yield* new SceneClear().stateDefault();
@@ -1023,7 +1023,7 @@ class ScenePlay extends Mono {//プレイ画面
                 this.resetStage();
                 continue;
             }
-            if (this.isFailure) {
+            if (this.isFailure) {//負けた
                 yield* this.showTelop(text.gameover, 2);
                 if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
                 switch (yield* new SceneGameOver().stateDefault()) {
@@ -1036,7 +1036,7 @@ class ScenePlay extends Mono {//プレイ画面
                 }
                 continue;
             }
-            if (game.input.isPress('x')) {
+            if (game.input.isPress('x')) {//ポーズメニューを開く
                 this.isActive = false;
                 switch (yield* new ScenePause().stateDefault()) {
                     case text.restart:
@@ -1086,7 +1086,9 @@ class ScenePlay extends Mono {//プレイ画面
             this.bossHPgauge.max = boss.unit.maxHp;
             this.bossHPgauge.watch = () => boss.unit.hp;
             this.ui.child.add(this.bossHPgauge);
-            yield* waitForFrag(() => boss.unit.isDefeat);
+            yield* waitForFrag(() => {
+                boss.unit.isDefeat;
+            });
             this.bossHPgauge.remove();
         }
     }
@@ -1395,6 +1397,7 @@ class Baddie extends Mono {//敵キャラ
     *routineBasic(user, pattern, moveSpeed, shot) {
         user.state.start(function* () {
             yield* waitForFrag(() => game.isWithin(user.pos.rect));
+            yield* waitForTime(Util.rand(60) * game.delta);
             yield* shot();
         }());
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
@@ -1519,7 +1522,7 @@ class Baddie extends Mono {//敵キャラ
             }
             const guidedShot = function* () {
                 for (let j = 0; j < 3; j++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500,firstSpeed:0,accelTime:3, color: 'white', guided: scene.player, guidedSpeed: 2 });
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 90, space: 25, count: 4, speed: 500, firstSpeed: 0, accelTime: 3, color: 'white', guided: scene.player, guidedSpeed: 2 });
                     yield* waitForTime(1);
                 }
             }
@@ -1533,16 +1536,13 @@ class Baddie extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
-            const minionName = 'crow';
+            const minionName = 'torimakicrow';
             let minions = [];
             const summonMinions = function* (name, count, distance) {
                 for (const minion of minions) {
-                    if (minion.isExist) return;
+                    minion.remove();
                 }
                 minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
-                for (const minion of minions) {
-                    minion.move.setRevo(60);
-                }
             }
             const resetPos = function* () {
                 yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
@@ -1578,6 +1578,18 @@ class Baddie extends Mono {//敵キャラ
                 const circleId = user.state.start(circleShot());
                 yield* user.state.wait(spiralId, circleId);
                 yield* waitForTime(2);
+            }
+        },
+        boss1torimaki: function* (user, pattern, bullets, scene) {
+            user.move.setRevo(60);
+            yield* waitForTime(Util.rand(60) * game.delta);
+            while (true) {
+                bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
+                yield* waitForTime(2);
+                if (Util.rand(2) === 0) {
+                    bullets.mulitWay(user.pos.linkX, user.pos.linkX, { count: 1, color: 'aqua', aim: scene.player });
+                    yield* waitForTime(2);
+                }
             }
         }
     }
@@ -1788,7 +1800,8 @@ export const datas = {//ゲームデータ
         crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
         dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
         bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
-        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 500, 2000, 'boss1', [Baddies.form.topsingle])
+        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 500, 2000, 'boss1', [Baddies.form.topsingle]),
+        torimakicrow: new BaddieData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within]),
     },
     player: {
         moveSpeed: 300,
