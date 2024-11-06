@@ -326,11 +326,15 @@ class Mono {//ゲームオブジェクトc
     }
     draw() { };
 }
-class State {//ジェネレータコンポーネント
+class State {//ステートコンポーネント
     constructor() {
         this.generators = new Map();
+        this.states=new Map();
     }
-    reset = () => this.generators.clear();
+    reset (){
+        this.generators.clear();
+        this.states.clear();
+    } 
     isEnable = (id) => this.generators.get(id) !== undefined;
     start(state, id) {
         const newid = this.generators.get(id) ? id : Util.uniqueId();
@@ -356,6 +360,7 @@ class State {//ジェネレータコンポーネント
         }
         return result;
     });
+    change=(id,stateName)=>
 }
 function* waitForTime(time) {//タイマー
     time -= game.delta;
