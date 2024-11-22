@@ -1054,25 +1054,25 @@ class ScenePlay extends Mono {//プレイ画面
         let phaseLength = 30;
         const appears = ['crow', 'dove', 'bigcrow'];
         const bossName = 'greatcrow';
-        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.elaps > phaseLength) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     const baddieName = appears[Util.rand(appears.length - 1)];
-        //     const data = datas.baddies[baddieName];
-        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
+        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+            if (this.elaps > phaseLength) {
+                yield undefined;
+                continue;
+            }
+            const baddieName = appears[Util.rand(appears.length - 1)];
+            const data = datas.baddies[baddieName];
+            const formation = data.forms[Util.rand(data.forms.length - 1)];
 
-        //     const spawnMax = Baddies.getMaxSpawn(data.size) - 2;
-        //     const spawnCount = Util.rand(spawnMax);
-        //     this.state.start(this.baddies.formation.call(this.baddies,formation, -1, -1, spawnCount,-1, data.name, 0, this.baddiesbullets, this, 0));
+            const spawnMax = Math.floor(game.width/ data.size) - 2;
+            const spawnCount = Util.rand(spawnMax);
+            this.state.start(this.baddies.formation.call(this.baddies,formation, -1, -1, spawnCount,-1, data.name, 0, this.baddiesbullets, this, 0));
 
         //     // this.debug.clear();
         //     // this.debug.add(() => b.pos.x);
         //     // this.debug.add(() => b.pos.y);
         //     //yield* waitForTime(999);
-        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        // }
+             yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         if (this.isFailure) return;
@@ -1080,12 +1080,16 @@ class ScenePlay extends Mono {//プレイ画面
             const data = datas.baddies[bossName];
             const formation = data.forms[0];
             const [boss] = yield* this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
+            let isbossDefeat = false;
+            boss.unit.onDefeat = () => {
+                isbossDefeat = true;
+            }
             this.bossHPgauge.isExist = true;
             this.bossHPgauge.max = boss.unit.maxHp;
             this.bossHPgauge.watch = () => boss.unit.hp;
             this.ui.child.add(this.bossHPgauge);
             yield* waitForFrag(() => {
-                boss.unit.isDefeat;
+                return isbossDefeat;
             });
             this.bossHPgauge.remove();
         }
@@ -1128,6 +1132,7 @@ class Unit {//キャラのパラメータ
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
         this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;
+        this.onDefeat = undefined;
     }
     createBasicState() {
         const owner = this.owner;
@@ -1148,6 +1153,7 @@ class Unit {//キャラのパラメータ
     defeat() {
         shared.playdata.total.point += this.point;
         shared.playdata.total.ko += this.kocount;
+        this.onDefeat?.();
         this.owner.remove();
     }
     get isDefeat() { return this.hp <= 0; }
