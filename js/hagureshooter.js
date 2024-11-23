@@ -992,9 +992,9 @@ class ScenePlay extends Mono {//プレイ画面
                 if (!bullet.collision.hit(target)) return;
                 target.color.flash('crimson');
                 shared.playdata.total.point += bullet.bullet.point;
-                if (target.unit.isBanish(bullet.bullet.damage)) target.state.defeat(this);
                 bullet.remove();
-            })
+                target.unit.isBanish(bullet.bullet.damage);
+            });
         }
         this.baddies.child.each((baddie) => {
             if (baddie.unit.isEnableWithout) return;
@@ -1063,15 +1063,15 @@ class ScenePlay extends Mono {//プレイ画面
             const data = datas.baddies[baddieName];
             const formation = data.forms[Util.rand(data.forms.length - 1)];
 
-            const spawnMax = Math.floor(game.width/ data.size) - 2;
+            const spawnMax = Math.floor(game.width / data.size) - 2;
             const spawnCount = Util.rand(spawnMax);
-            this.state.start(this.baddies.formation.call(this.baddies,formation, -1, -1, spawnCount,-1, data.name, 0, this.baddiesbullets, this, 0));
+            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
 
-        //     // this.debug.clear();
-        //     // this.debug.add(() => b.pos.x);
-        //     // this.debug.add(() => b.pos.y);
-        //     //yield* waitForTime(999);
-             yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+            //     // this.debug.clear();
+            //     // this.debug.add(() => b.pos.x);
+            //     // this.debug.add(() => b.pos.y);
+            //     //yield* waitForTime(999);
+            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
         }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
@@ -1124,7 +1124,7 @@ class ScenePlay extends Mono {//プレイ画面
         return shared.playdata.total != shared.highscores.pop();
     }
 }
-class Unit {//キャラのパラメータ
+class Unit {//キャラ
     constructor() {
         this.reset();
         return [new State(), this];
@@ -1132,14 +1132,21 @@ class Unit {//キャラのパラメータ
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
         this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;
-        this.onDefeat = undefined;
+        this.scene = this.onDefeat = undefined;
     }
-    createBasicState() {
+    set(scene) {
+        this.reset();
+        this.scene = scene;
+        this._createBasicState();
+    }
+    _createBasicState() {
         const owner = this.owner;
         const state = this.owner.state;
-        state.defeat = (scene) => {
+        const unit=this;
+        const scene=this.scene;
+        state.defeat ??= function* () {
             scene.effect.emittCircle(8, owner.pos.width * 1.5, owner.pos.width * 0.0125, owner.pos.width * 0.2, owner.color.baseColor, owner.pos.linkX, owner.pos.linkY);
-            this.defeat();
+            unit.defeat();
         }
     }
     setHp(hp) {
@@ -1148,7 +1155,9 @@ class Unit {//キャラのパラメータ
     isBanish(damage) {
         if (this.invincible) return false;
         this.hp -= damage;
-        return this.hp <= 0;
+        if (this.hp > 0) return;
+        const state = this.owner.state;        
+        state.start(state.defeat());
     }
     defeat() {
         shared.playdata.total.point += this.point;
@@ -1164,8 +1173,8 @@ class Player extends Mono {//プレイヤーキャラ
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         this.state.start(this.stateDefault.call(this, bullets, scene));
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height - 20, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
-        this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
-        this.unit.createBasicState();
+        this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);        
+        this.unit.set(scene);
         this.unit.setHp(1);
         this.unit.kocount = 0;
     }
@@ -1384,7 +1393,7 @@ class Baddie extends Mono {//敵キャラ
         this.pos.parent = parent;
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
-        this.unit.createBasicState();
+        this.unit.set(scene);        
         this.unit.setHp(data.hp);
         this.unit.point = data.point;
         return this;
@@ -1499,8 +1508,12 @@ class Baddie extends Mono {//敵キャラ
             yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         boss1: function* (user, pattern, bullets, scene) {
-            user.state.defeat = () => {
-
+            user.state.defeat = function* () {
+                const pos = user.pos;
+                for (let i = 0; i < 10; i++) {
+                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.linkX, pos.linkY);
+                    yield* waitForTime(1 / 8);
+                }
                 user.unit.defeat();
             }
             const circleShot = function* () {
