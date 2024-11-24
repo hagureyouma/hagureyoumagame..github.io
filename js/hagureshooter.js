@@ -1054,25 +1054,20 @@ class ScenePlay extends Mono {//プレイ画面
         let phaseLength = 30;
         const appears = ['crow', 'dove', 'bigcrow'];
         const bossName = 'greatcrow';
-        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-            if (this.elaps > phaseLength) {
-                yield undefined;
-                continue;
-            }
-            const baddieName = appears[Util.rand(appears.length - 1)];
-            const data = datas.baddies[baddieName];
-            const formation = data.forms[Util.rand(data.forms.length - 1)];
+        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+        //     if (this.elaps > phaseLength) {
+        //         yield undefined;
+        //         continue;
+        //     }
+        //     const baddieName = appears[Util.rand(appears.length - 1)];
+        //     const data = datas.baddies[baddieName];
+        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
 
-            const spawnMax = Math.floor(game.width / data.size) - 2;
-            const spawnCount = Util.rand(spawnMax);
-            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
-
-            //     // this.debug.clear();
-            //     // this.debug.add(() => b.pos.x);
-            //     // this.debug.add(() => b.pos.y);
-            //     //yield* waitForTime(999);
-            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        }
+        //     const spawnMax = Math.floor(game.width / data.size) - 2;
+        //     const spawnCount = Util.rand(spawnMax);
+        //     this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
+        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        // }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         if (this.isFailure) return;
@@ -1142,8 +1137,8 @@ class Unit {//キャラ
     _createBasicState() {
         const owner = this.owner;
         const state = this.owner.state;
-        const unit=this;
-        const scene=this.scene;
+        const unit = this;
+        const scene = this.scene;
         state.defeat ??= function* () {
             scene.effect.emittCircle(8, owner.pos.width * 1.5, owner.pos.width * 0.0125, owner.pos.width * 0.2, owner.color.baseColor, owner.pos.linkX, owner.pos.linkY);
             unit.defeat();
@@ -1153,10 +1148,10 @@ class Unit {//キャラ
         this.hp = this.maxHp = hp;
     }
     isBanish(damage) {
-        if (this.invincible) return false;
-        this.hp -= damage;
+        if (this.invincible||this.hp == 0) return;
+        this.hp = Math.max(this.hp - damage, 0);
         if (this.hp > 0) return;
-        const state = this.owner.state;        
+        const state = this.owner.state;
         state.start(state.defeat());
     }
     defeat() {
@@ -1173,7 +1168,7 @@ class Player extends Mono {//プレイヤーキャラ
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         this.state.start(this.stateDefault.call(this, bullets, scene));
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height - 20, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
-        this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);        
+        this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.set(scene);
         this.unit.setHp(1);
         this.unit.kocount = 0;
@@ -1393,7 +1388,7 @@ class Baddie extends Mono {//敵キャラ
         this.pos.parent = parent;
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
-        this.unit.set(scene);        
+        this.unit.set(scene);
         this.unit.setHp(data.hp);
         this.unit.point = data.point;
         return this;
@@ -1508,10 +1503,20 @@ class Baddie extends Mono {//敵キャラ
             yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         boss1: function* (user, pattern, bullets, scene) {
+            const minionName = 'torimakicrow';
+            let minions = [];
+            const removeMinions = () => {
+                for (const minion of minions) minion?.remove();
+            }
+            const summonMinions = function* (name, count, distance) {
+                removeMinions();
+                minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
+            }
             user.state.defeat = function* () {
+                removeMinions();
                 const pos = user.pos;
-                for (let i = 0; i < 10; i++) {
-                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.linkX, pos.linkY);
+                for (let i = 0; i < 16; i++) {
+                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height));
                     yield* waitForTime(1 / 8);
                 }
                 user.unit.defeat();
@@ -1569,20 +1574,12 @@ class Baddie extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
-            const minionName = 'torimakicrow';
-            let minions = [];
-            const summonMinions = function* (name, count, distance) {
-                for (const minion of minions) {
-                    minion.remove();
-                }
-                minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
-            }
             const resetPos = function* () {
                 yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
             }
+            //ここからボスの動作
             yield* resetPos();
             //user.setAnime();
-
             while (user.unit.hpRatio > 0.5) {
                 yield* summonMinions(minionName, 7, user.pos.width * 0.75);
                 yield* user.state.startAndWait(guidedShot(true));
