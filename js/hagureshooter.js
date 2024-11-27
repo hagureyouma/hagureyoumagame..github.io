@@ -1577,9 +1577,15 @@ class Baddie extends Mono {//敵キャラ
             const resetPos = function* () {
                 yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
             }
+            const randPos = function* () {
+                const x=Util.rand(game.width-user.pos.width)+(user.pos.width*0.5);
+                const y=Util.rand((game.height*0.6)-user.pos.height)+(user.pos.height*0.5);
+                yield* user.move.to(x,y, 100, { easing: Ease.sinein });
+            }
             //ここからボスの動作
             yield* resetPos();
             //user.setAnime();
+            
             while (user.unit.hpRatio > 0.5) {
                 yield* summonMinions(minionName, 7, user.pos.width * 0.75);
                 yield* user.state.startAndWait(guidedShot(true));
