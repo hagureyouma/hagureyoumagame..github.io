@@ -1148,7 +1148,7 @@ class Unit {//キャラ
         this.hp = this.maxHp = hp;
     }
     isBanish(damage) {
-        if (this.invincible||this.hp == 0) return;
+        if (this.invincible || this.hp == 0) return;
         this.hp = Math.max(this.hp - damage, 0);
         if (this.hp > 0) return;
         const state = this.owner.state;
@@ -1505,12 +1505,20 @@ class Baddie extends Mono {//敵キャラ
         boss1: function* (user, pattern, bullets, scene) {
             const minionName = 'torimakicrow';
             let minions = [];
+            let deadMinion=0;
             const removeMinions = () => {
                 for (const minion of minions) minion?.remove();
             }
             const summonMinions = function* (name, count, distance) {
+                //if(deadMinion<count)                
                 removeMinions();
                 minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
+                for (const minion of minions) {
+                    minion.unit.isEnableWithout=true;
+                    minion.unit.onDefeat=()=>{
+                        deadMinion++;
+                    }
+                }
             }
             user.state.defeat = function* () {
                 removeMinions();
@@ -1539,21 +1547,24 @@ class Baddie extends Mono {//敵キャラ
                     counter += 11;
                 }
             }
-            const ringShot = function* (isOneTime) {
-                do {
-                    const speed = 500;
-                    const bs = bullets.circle(user.pos.x, user.pos.y, { speed: 250, count: 18, color: 'lime' });
-                    yield* waitForTime(0.5);
-                    for (const b of bs) {
-                        const [x, y] = Util.normalize(scene.player.pos.x - b.pos.x, scene.player.pos.y - b.pos.y);
-                        b.move.set(x * speed, y * speed, 2, 0);
-                    }
-                    yield* waitForTime(1);
-                } while (!isOneTime);
+            const ringShot = function* () {
+                const speed = 500;
+                const bs = bullets.circle(user.pos.x, user.pos.y, { speed: 250, count: 18, color: 'lime' });
+                yield* waitForTime(0.5);
+                for (const b of bs) {
+                    const [x, y] = Util.normalize(scene.player.pos.x - b.pos.x, scene.player.pos.y - b.pos.y);
+                    b.move.set(x * speed, y * speed, 2, 0);
+                }
+                yield* waitForTime(1);
+            }
+            const ringShotRepeat = function* () {
+                while (true) {
+                    yield* ringShot();
+                }
             }
             const fanShot = function* (rangeDeg = 45, radiantSpeed = 180, bulletSpeed = 400) {
                 const timeOfs = game.sec;
-                for (let i = 0; i < 60; i++) {
+                for (let i = 0; i < 20; i++) {
                     bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), count: 1, speed: bulletSpeed, color: 'aqua' });
                     yield* waitForTime(0.125);
                 }
@@ -1578,24 +1589,25 @@ class Baddie extends Mono {//敵キャラ
                 yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
             }
             const randPos = function* () {
-                const x=Util.rand(game.width-user.pos.width)+(user.pos.width*0.5);
-                const y=Util.rand((game.height*0.6)-user.pos.height)+(user.pos.height*0.5);
-                yield* user.move.to(x,y, 100, { easing: Ease.sinein });
+                const x = Util.rand(game.width - user.pos.width) + (user.pos.width * 0.5);
+                const y = Util.rand((game.height * 0.6) - user.pos.height) + (user.pos.height * 0.5);
+                yield* user.move.to(x, y, 200, { easing: Ease.sineInOut });
             }
             //ここからボスの動作
             yield* resetPos();
             //user.setAnime();
-            
+            let shotList = [fanShot, ringShot, guidedShot];
+            let currentShot = 0;
             while (user.unit.hpRatio > 0.5) {
                 yield* summonMinions(minionName, 7, user.pos.width * 0.75);
-                yield* user.state.startAndWait(guidedShot(true));
-                yield* waitForTime(2);
-                yield* user.state.startAndWait(fanShot());
-                yield* waitForTime(2);
-                yield* user.state.startAndWait(ringShot(true));
-                yield* waitForTime(2);
-                yield* user.state.startAndWait(guidedShot(true));
-                yield* waitForTime(2);
+                yield* user.state.startAndWait(shotList[currentShot]());
+                currentShot = (currentShot + 1) % shotList.length;
+                if (Util.rand(100) > 0) {
+                    yield* randPos();
+                } else {
+                    yield* waitForTime(1);
+                }
+
             }
             while (user.unit.hpRatio > 0.25) {
                 yield* user.state.startAndWait(fanShot());
@@ -1604,7 +1616,7 @@ class Baddie extends Mono {//敵キャラ
                 yield* waitForTime(2);
                 yield* user.state.startAndWait(spiralShot());
                 yield* waitForTime(2);
-                yield* user.state.startAndWait(ringShot(true));
+                yield* user.state.startAndWait(ringShot());
                 yield* waitForTime(2);
             }
             user.state.start(ringShot(false));
