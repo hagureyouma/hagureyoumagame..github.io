@@ -285,9 +285,9 @@ class Rect {//矩形
     isIntersect = (rect) => rect.right > this.x && this.right > rect.x && rect.bottom > this.y && this.bottom > rect.y;
     isOverflow = (rect) => rect.x < this.x || rect.right > this.right || rect.y < this.y || rect.bottom > this.bottom;
 }
-class Mono {//ゲームオブジェクトc
+class Mono {//ゲームオブジェクト
     constructor(...args) {
-        this.isExist = this.isActive = true;
+        this.isExist = this.isActive = this.isVisible = true;
         this.isRemoved = false;
         this.mixs = [];
         this.childIndex = -1;
@@ -320,11 +320,17 @@ class Mono {//ゲームオブジェクトc
     update() { }
     postUpdate() { }
     baseDraw(ctx) {
-        if (!this.isExist) return;
+        if (!this.isExist || !this.isVisible) return;
         this.draw(ctx);
         for (const mix of this.mixs) mix.draw?.(ctx);
     }
     draw() { };
+    hide() {
+        this.isActive = this.isVisible = true;
+    }
+    show() {
+        this.isActive = this.isVisible = false;
+    }
 }
 class State {//ステートコンポーネント
     constructor() {
@@ -602,6 +608,7 @@ class Child {//コンテナコンポーネント
             obj = this.objs[this.reserves[name].pop()];
         }
         obj.isExist = true;
+        obj.show();
         this.liveCount++;
         return obj;
     }
@@ -1125,8 +1132,10 @@ class Unit {//キャラ
         return [new State(), this];
     }
     reset() {
+        this.name="";
         this.hp = this.maxHp = this.point = this.kocount = 1;
         this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;
+        this.isDefeatToRemove = true;
         this.scene = this.onDefeat = undefined;
     }
     set(scene) {
@@ -1158,7 +1167,8 @@ class Unit {//キャラ
         shared.playdata.total.point += this.point;
         shared.playdata.total.ko += this.kocount;
         this.onDefeat?.();
-        this.owner.remove();
+        this.owner.hide();
+        if (this.isDefeatToRemove) this.owner.remove();
     }
     get isDefeat() { return this.hp <= 0; }
     get hpRatio() { return this.hp / this.maxHp };
@@ -1393,6 +1403,7 @@ class Baddie extends Mono {//敵キャラ
         this.unit.point = data.point;
         return this;
     }
+
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
@@ -1505,7 +1516,7 @@ class Baddie extends Mono {//敵キャラ
         boss1: function* (user, pattern, bullets, scene) {
             const minionName = 'torimakicrow';
             let minions = [];
-            let deadMinion=0;
+            let deadMinion = 0;
             const removeMinions = () => {
                 for (const minion of minions) minion?.remove();
             }
@@ -1514,10 +1525,8 @@ class Baddie extends Mono {//敵キャラ
                 removeMinions();
                 minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
                 for (const minion of minions) {
-                    minion.unit.isEnableWithout=true;
-                    minion.unit.onDefeat=()=>{
-                        deadMinion++;
-                    }
+                    minion.unit.isEnableWithout = true;
+                    minion.unit.isDefeatToRemove=false;
                 }
             }
             user.state.defeat = function* () {
