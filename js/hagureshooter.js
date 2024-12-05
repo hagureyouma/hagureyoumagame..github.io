@@ -287,7 +287,7 @@ class Rect {//矩形
 }
 class Mono {//ゲームオブジェクト
     constructor(...args) {
-        this.isExist = this.isActive = this.isVisible = true;
+        this.isExist = this.isActive = true;
         this.isRemoved = false;
         this.mixs = [];
         this.childIndex = -1;
@@ -320,17 +320,11 @@ class Mono {//ゲームオブジェクト
     update() { }
     postUpdate() { }
     baseDraw(ctx) {
-        if (!this.isExist || !this.isVisible) return;
+        if (!this.isExist) return;
         this.draw(ctx);
         for (const mix of this.mixs) mix.draw?.(ctx);
     }
     draw() { };
-    hide() {
-        this.isActive = this.isVisible = true;
-    }
-    show() {
-        this.isActive = this.isVisible = false;
-    }
 }
 class State {//ステートコンポーネント
     constructor() {
@@ -555,6 +549,7 @@ class Guided {//ホーミングコンポーネント
 class Collision {//当たり判定コンポーネント
     constructor() {
         this._rect = new Rect();
+        this.isEnable = true;
         this.isVisible = false;
         return [new Pos(), this];
     }
@@ -564,7 +559,7 @@ class Collision {//当たり判定コンポーネント
         const pos = this.owner.pos;
         return this._rect.set(Math.floor(pos.linkX - pos.align * this._rect.width * 0.5), Math.floor(pos.linkY - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
-    hit = (obj) => this.rect.isIntersect(obj.collision.rect);
+    hit = (obj) => this.isEnable && this.rect.isIntersect(obj.collision.rect);
     draw(ctx) {
         if (!this.isVisible) return;
         ctx.fillStyle = '#ff000080';
@@ -608,7 +603,6 @@ class Child {//コンテナコンポーネント
             obj = this.objs[this.reserves[name].pop()];
         }
         obj.isExist = true;
-        obj.show();
         this.liveCount++;
         return obj;
     }
@@ -1132,29 +1126,30 @@ class Unit {//キャラ
         return [new State(), this];
     }
     reset() {
-        this.name="";
         this.hp = this.maxHp = this.point = this.kocount = 1;
         this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;
-        this.isDefeatToRemove = true;
-        this.scene = this.onDefeat = undefined;
+        this.data = this.scene = this.onDefeat = undefined;
     }
-    set(scene) {
+    set(data, scene) {
         this.reset();
         this.scene = scene;
         this._createBasicState();
+        if (!data) return;
+        this.data = data;
+        this.hp = this.maxHp = data.hp;
+        this.point = data.point;
     }
     _createBasicState() {
         const owner = this.owner;
-        const state = this.owner.state;
         const unit = this;
-        const scene = this.scene;
-        state.defeat ??= function* () {
-            scene.effect.emittCircle(8, owner.pos.width * 1.5, owner.pos.width * 0.0125, owner.pos.width * 0.2, owner.color.baseColor, owner.pos.linkX, owner.pos.linkY);
-            unit.defeat();
+        owner.state.defeat ??= function* () {
+            const size = unit.data.size;
+            unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
+            owner.unit.defeat();
         }
     }
-    setHp(hp) {
-        this.hp = this.maxHp = hp;
+    resetHp() {
+        this.hp = this.maxHp;
     }
     isBanish(damage) {
         if (this.invincible || this.hp == 0) return;
@@ -1163,12 +1158,16 @@ class Unit {//キャラ
         const state = this.owner.state;
         state.start(state.defeat());
     }
+    spawn() {
+        const size = this.data.size;
+        const time = size * 0.005;
+        this.scene.effect.emittConvergeCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY);
+    }
     defeat() {
         shared.playdata.total.point += this.point;
         shared.playdata.total.ko += this.kocount;
         this.onDefeat?.();
-        this.owner.hide();
-        if (this.isDefeatToRemove) this.owner.remove();
+        this.owner.remove();
     }
     get isDefeat() { return this.hp <= 0; }
     get hpRatio() { return this.hp / this.maxHp };
@@ -1179,8 +1178,7 @@ class Player extends Mono {//プレイヤーキャラ
         this.state.start(this.stateDefault.call(this, bullets, scene));
         this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height - 20, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
-        this.unit.set(scene);
-        this.unit.setHp(1);
+        this.unit.set(undefined, scene);
         this.unit.kocount = 0;
     }
     maneuver() {
@@ -1366,24 +1364,18 @@ class Baddies extends Mono {//敵キャラ管理
                 randomform(true);
                 break;
         }
+        const baddies = [];
+        for (const [x, y] of poss) baddies.push(this.spawn(x, y, name, pattern, bullets, scene, parent));
         switch (type) {
             case Baddies.form.within:
             case Baddies.form.circle:
                 const time = size * 0.005;
-                for (const [x, y] of poss) {
-                    let ex = x;
-                    let ey = y;
-                    if (parent) {
-                        ex += parent.pos.linkX;
-                        ey += parent.pos.linkY;
-                    }
-                    scene.effect.emittConvergeCircle(8, size * 1.5, time, size * 0.2, 'white', ex, ey);
+                for (const baddie of baddies) {
+                    baddie.unit.spawn();
                 }
                 yield* waitForTime(time * 0.5);
             default:
         }
-        const baddies = [];
-        for (const [x, y] of poss) baddies.push(this.spawn(x, y, name, pattern, bullets, scene, parent));
         return baddies;
     }
 }
@@ -1398,9 +1390,7 @@ class Baddie extends Mono {//敵キャラ
         this.pos.parent = parent;
         this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
-        this.unit.set(scene);
-        this.unit.setHp(data.hp);
-        this.unit.point = data.point;
+        this.unit.set(data, scene);
         return this;
     }
 
@@ -1516,21 +1506,45 @@ class Baddie extends Mono {//敵キャラ
         boss1: function* (user, pattern, bullets, scene) {
             const minionName = 'torimakicrow';
             let minions = [];
-            let deadMinion = 0;
             const removeMinions = () => {
                 for (const minion of minions) minion?.remove();
+                minions = [];
+            }
+            const killMinions = () => {
+                for (const minion of minions) minion.unit.defeat();
+                minions = [];
             }
             const summonMinions = function* (name, count, distance) {
-                //if(deadMinion<count)                
-                removeMinions();
-                minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
-                for (const minion of minions) {
-                    minion.unit.isEnableWithout = true;
-                    minion.unit.isDefeatToRemove=false;
+                if (minions.length != count) {
+                    removeMinions();
+                    minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
+                    for (let i = 0; i < minions.length; i++) {
+                        const minion = minions[i];
+                        const unit = minion.unit;
+                        unit.isEnableWithout = true;
+                        unit.onDefeat = () => {
+                            minions[i] = undefined;
+                        }
+                    }
+                    return;
+                }
+                let degOffset = 0;
+                const baseDeg = 360 / count;
+                for (let i = 0; i < minions.length; i++) {
+                    const minion = minions[i];
+                    if (!minion) continue;
+                    degOffset = minion.pos.revo % 360;
+                    break;
+                }
+                for (let i = 0; i < minions.length; i++) {
+                    const minion = minions[i];
+                    if (minion) continue;
+                    
+                    scene.baddies.spawn(x,y, name, 0, bullets, scene, user);
                 }
             }
             user.state.defeat = function* () {
-                removeMinions();
+                killMinions();
                 const pos = user.pos;
                 for (let i = 0; i < 16; i++) {
                     scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height));
