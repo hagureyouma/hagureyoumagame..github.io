@@ -1162,6 +1162,7 @@ class Unit {//キャラ
         const size = this.data.size;
         const time = size * 0.005;
         this.scene.effect.emittConvergeCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY);
+        return time;
     }
     defeat() {
         shared.playdata.total.point += this.point;
@@ -1369,9 +1370,9 @@ class Baddies extends Mono {//敵キャラ管理
         switch (type) {
             case Baddies.form.within:
             case Baddies.form.circle:
-                const time = size * 0.005;
+                let time=0;
                 for (const baddie of baddies) {
-                    baddie.unit.spawn();
+                    time=baddie.unit.spawn();
                 }
                 yield* waitForTime(time * 0.5);
             default:
@@ -1514,17 +1515,19 @@ class Baddie extends Mono {//敵キャラ
                 for (const minion of minions) minion.unit.defeat();
                 minions = [];
             }
+            const initMinion=(minions,index,minion)=>{
+                const unit = minion.unit;
+                unit.isEnableWithout = true;
+                unit.onDefeat = () => {
+                    minions[index] = undefined;
+                }
+            }
             const summonMinions = function* (name, count, distance) {
                 if (minions.length != count) {
                     removeMinions();
                     minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
                     for (let i = 0; i < minions.length; i++) {
-                        const minion = minions[i];
-                        const unit = minion.unit;
-                        unit.isEnableWithout = true;
-                        unit.onDefeat = () => {
-                            minions[i] = undefined;
-                        }
+                        initMinion(minions,i,minions[i]);
                     }
                     return;
                 }
@@ -1533,15 +1536,19 @@ class Baddie extends Mono {//敵キャラ
                 for (let i = 0; i < minions.length; i++) {
                     const minion = minions[i];
                     if (!minion) continue;
-                    degOffset = minion.pos.revo % 360;
+                    degOffset = Util.xyToDeg(minion.pos.x, minion.pos.y) - (i * baseDeg);
                     break;
                 }
+                let time=0;
                 for (let i = 0; i < minions.length; i++) {
                     const minion = minions[i];
                     if (minion) continue;
-                    
-                    scene.baddies.spawn(x,y, name, 0, bullets, scene, user);
+                    const deg = i * baseDeg + degOffset;
+                    const newMinion = minions[i] = scene.baddies.spawn(Util.degToX(deg) * distance, Util.degToY(deg) * distance, name, 0, bullets, scene, user);
+                    initMinion(minions,i,newMinion);
+                    time=newMinion.unit.spawn();
                 }
+                yield* waitForTime(time * 0.5);
             }
             user.state.defeat = function* () {
                 killMinions();
