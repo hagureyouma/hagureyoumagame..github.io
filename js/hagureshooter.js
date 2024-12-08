@@ -1370,9 +1370,9 @@ class Baddies extends Mono {//敵キャラ管理
         switch (type) {
             case Baddies.form.within:
             case Baddies.form.circle:
-                let time=0;
+                let time = 0;
                 for (const baddie of baddies) {
-                    time=baddie.unit.spawn();
+                    time = baddie.unit.spawn();
                 }
                 yield* waitForTime(time * 0.5);
             default:
@@ -1512,11 +1512,11 @@ class Baddie extends Mono {//敵キャラ
                 minions = [];
             }
             const killMinions = () => {
-                for (const minion of minions) minion.unit.defeat();
+                for (const minion of minions) minion?.unit.defeat();
                 minions = [];
             }
-            const initMinion=(minions,index,minion)=>{
-                const unit = minion.unit;
+            const initMinion = (minions, index) => {
+                const unit = minions[index].unit;
                 unit.isEnableWithout = true;
                 unit.onDefeat = () => {
                     minions[index] = undefined;
@@ -1527,7 +1527,7 @@ class Baddie extends Mono {//敵キャラ
                     removeMinions();
                     minions = yield* scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user);
                     for (let i = 0; i < minions.length; i++) {
-                        initMinion(minions,i,minions[i]);
+                        initMinion(minions, i);
                     }
                     return;
                 }
@@ -1539,19 +1539,18 @@ class Baddie extends Mono {//敵キャラ
                     degOffset = Util.xyToDeg(minion.pos.x, minion.pos.y) - (i * baseDeg);
                     break;
                 }
-                let time=0;
+                let time = 0;
                 for (let i = 0; i < minions.length; i++) {
                     const minion = minions[i];
                     if (minion) continue;
                     const deg = i * baseDeg + degOffset;
                     const newMinion = minions[i] = scene.baddies.spawn(Util.degToX(deg) * distance, Util.degToY(deg) * distance, name, 0, bullets, scene, user);
-                    initMinion(minions,i,newMinion);
-                    time=newMinion.unit.spawn();
+                    initMinion(minions, i);
+                    time = newMinion.unit.spawn();
                 }
                 yield* waitForTime(time * 0.5);
             }
             user.state.defeat = function* () {
-                killMinions();
                 const pos = user.pos;
                 for (let i = 0; i < 16; i++) {
                     scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height));
@@ -1616,12 +1615,12 @@ class Baddie extends Mono {//敵キャラ
                 }
             }
             const resetPos = function* () {
-                yield* user.move.to(user.pos.x, game.height * 0.3, 200, { easing: Ease.sinein });
+                yield* user.move.to(game.width * 0.5, game.height * 0.3, 100, { easing: Ease.sineInOut });
             }
             const randPos = function* () {
                 const x = Util.rand(game.width - user.pos.width) + (user.pos.width * 0.5);
                 const y = Util.rand((game.height * 0.6) - user.pos.height) + (user.pos.height * 0.5);
-                yield* user.move.to(x, y, 200, { easing: Ease.sineInOut });
+                yield* user.move.to(x, y, 100, { easing: Ease.sineInOut });
             }
             //ここからボスの動作
             yield* resetPos();
@@ -1629,27 +1628,34 @@ class Baddie extends Mono {//敵キャラ
             let shotList = [fanShot, ringShot, guidedShot];
             let currentShot = 0;
             while (user.unit.hpRatio > 0.5) {
-                yield* summonMinions(minionName, 7, user.pos.width * 0.75);
+                if (currentShot === 0) yield* summonMinions(minionName, 7, user.pos.width * 0.75);
                 yield* user.state.startAndWait(shotList[currentShot]());
+                if (!(user.unit.hpRatio > 0.5)) break;
                 currentShot = (currentShot + 1) % shotList.length;
-                if (Util.rand(100) > 0) {
+                if (Util.rand(100) > 30) {
                     yield* randPos();
                 } else {
                     yield* waitForTime(1);
                 }
-
             }
+            yield* resetPos();
+            shotList = [fanShot, circleShot, spiralShot, ringShot];
+            currentShot = 0;
             while (user.unit.hpRatio > 0.25) {
-                yield* user.state.startAndWait(fanShot());
-                yield* waitForTime(2);
-                yield* user.state.startAndWait(circleShot());
-                yield* waitForTime(2);
-                yield* user.state.startAndWait(spiralShot());
-                yield* waitForTime(2);
-                yield* user.state.startAndWait(ringShot());
-                yield* waitForTime(2);
+                if (currentShot === 0) yield* summonMinions(minionName, 9, user.pos.width * 0.75);
+                yield* user.state.startAndWait(shotList[currentShot]());
+                if (!(user.unit.hpRatio > 0.25)) break;
+                currentShot = (currentShot + 1) % shotList.length;
+                if (Util.rand(100) > 30) {
+                    yield* randPos();
+                    if (Util.rand(100) > 40) yield* randPos();
+                } else {
+                    yield* waitForTime(1.5);
+                }
             }
-            user.state.start(ringShot(false));
+            killMinions();
+            yield* resetPos();
+            user.state.start(ringShotRepeat());
             while (true) {
                 const spiralId = user.state.start(spiralShot());
                 yield* waitForTime(0.8);
