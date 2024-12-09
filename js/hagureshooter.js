@@ -1133,19 +1133,19 @@ class Unit {//キャラ
     set(data, scene) {
         this.reset();
         this.scene = scene;
-        this._createBasicState();
+        this._createRequiedState();
         if (!data) return;
         this.data = data;
         this.hp = this.maxHp = data.hp;
         this.point = data.point;
     }
-    _createBasicState() {
+    _createRequiedState() {
         const owner = this.owner;
         const unit = this;
         owner.state.defeat ??= function* () {
             const size = unit.data.size;
             unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
-            owner.unit.defeat();
+            unit.defeatRequied();
         }
     }
     resetHp() {
@@ -1155,8 +1155,7 @@ class Unit {//キャラ
         if (this.invincible || this.hp == 0) return;
         this.hp = Math.max(this.hp - damage, 0);
         if (this.hp > 0) return;
-        const state = this.owner.state;
-        state.start(state.defeat());
+        this.defeat();
     }
     spawn() {
         const size = this.data.size;
@@ -1165,6 +1164,10 @@ class Unit {//キャラ
         return time;
     }
     defeat() {
+        const state = this.owner.state;
+        state.start(state.defeat());
+    }
+    defeatRequied() {
         shared.playdata.total.point += this.point;
         shared.playdata.total.ko += this.kocount;
         this.onDefeat?.();
@@ -1551,12 +1554,14 @@ class Baddie extends Mono {//敵キャラ
                 yield* waitForTime(time * 0.5);
             }
             user.state.defeat = function* () {
+                //他のステートのリセットがいるよ
+                scene.baddiesbullets.child.removeAll();
                 const pos = user.pos;
                 for (let i = 0; i < 16; i++) {
                     scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height));
                     yield* waitForTime(1 / 8);
                 }
-                user.unit.defeat();
+                user.unit.defeatRequied();
             }
             const circleShot = function* () {
                 const count = 36;
