@@ -3,7 +3,7 @@
 
 {//Javascriptメモ
     //動的言語だからか入力補完があまり効かなくて不便～
-    //thisは.の左のオブジェクトのこと！thisを固定するにはbindする　アロー関数=>のthisは変わらないよ
+    //thisは.の左のオブジェクトのこと！thisを固定するにはbindやCallする　アロー関数=>のthisは変わらないよ
     //ゲッター・セッターはアロー関数=>に未対応
     //スプレッド構文[...配列]
     //Mapは名前で読み書きできる配列
@@ -14,6 +14,14 @@
     //async関数はresolveが呼んであるPromiseオブジェクトをreturnするよ
     //webフォントの読み込み待ちはonloadイベントでできないみたいなのでWebFontLoaderを使った
     //プロパティをコンストラクタで定義するのとインスタンスに後から追加するのは、なにか違いがあるの？
+}
+{//仕様メモ
+//毎フレームの処理の順序　オブジェクトツリーのルートから順に、update→コンポーネントundate→postupdate　draw→コンポーネントdraw
+}
+{//やりたいことメモ
+//ハイスコアのローカルセーブ＆ロード
+//残像の色変更　HSV色空間とグラデーションマップがいる
+//絵文字のパーティクル
 }
 'use strict';
 console.clear();
@@ -559,7 +567,7 @@ class Collision {//当たり判定コンポーネント
         const pos = this.owner.pos;
         return this._rect.set(Math.floor(pos.linkX - pos.align * this._rect.width * 0.5), Math.floor(pos.linkY - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
-    hit = (obj) => this.isEnable && this.rect.isIntersect(obj.collision.rect);
+    hit = (obj) => this.isEnable && this.rect.isIntersect(obj.collision.rect);//速度が矩形より大きいとすり抜けるよ
     draw(ctx) {
         if (!this.isVisible) return;
         ctx.fillStyle = '#ff000080';
@@ -567,7 +575,7 @@ class Collision {//当たり判定コンポーネント
         ctx.fillRect(r.x, r.y, r.width, r.height);
     }
 }
-class Child {//コンテナコンポーネント
+class Child {//コンテナコンポーネント    
     static grave = new Set();
     static clean() {
         if (Child.grave.size === 0) return;
@@ -585,7 +593,7 @@ class Child {//コンテナコンポーネント
     }
     reset() { }
     addCreator = (name, func) => this.creator[name] = func;
-    pool(name) {
+    pool(name) {//オブジェクトプール（オブジェクトを再利用する）
         let obj;
         if (name in this.reserves === false) this.reserves[name] = [];
         if (this.reserves[name].length === 0) {
@@ -606,7 +614,7 @@ class Child {//コンテナコンポーネント
         this.liveCount++;
         return obj;
     }
-    add(obj) {
+    add(obj) {//プールしないオブジェクト用　removeすると削除リストに登録されて、フレームの終わりにまとめて削除される
         obj.remove = () => {
             if (!obj.isExist) return;
             obj.isExist = false;
@@ -790,7 +798,7 @@ class Tsubu extends Mono {//パーティクル
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y) {
+    emittCircle(count, distance, time, size, color, x, y) {//拡散
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const t = this.child.pool(Tsubu.name);
@@ -802,7 +810,7 @@ class Tsubu extends Mono {//パーティクル
             t.move.relativeDegForTime(deg * i, distance, time);
         }
     }
-    emittConvergeCircle(count, distance, time, size, color, x, y) {
+    emittConvergeCircle(count, distance, time, size, color, x, y) {//収束
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             const cd = deg * i;
@@ -887,9 +895,8 @@ class SceneTitle extends Mono {//タイトル画面
         const titleY = game.height * 0.25;
         this.child.add(new Label(text.title, game.width * 0.5, titleY, { size: cfg.fontSize.large, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.child.add(new Label(text.title2, game.width * 0.5, titleY + cfg.fontSize.large * 1.5, { size: cfg.fontSize.large, align: 1, valign: 1 }));
-        //ボタンを押して表示
+        //ボタンを押してね
         this.child.add(this.presskey = new Label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
-        this.presskey.color.blink(0.5);
         //メニュー
         this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
         this.titleMenu.isEnableCancel = true;
@@ -1127,7 +1134,7 @@ class Unit {//キャラ
     }
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
-        this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;
+        this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;//画面内に入った、画面外に出ると消える、無敵、射撃中
         this.data = this.scene = this.onDefeat = undefined;
     }
     set(data, scene) {
@@ -1142,7 +1149,7 @@ class Unit {//キャラ
     _createRequiedState() {
         const owner = this.owner;
         const unit = this;
-        owner.state.defeat ??= function* () {
+        owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
             const size = unit.data.size;
             unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
             unit.defeatRequied();
@@ -1151,23 +1158,23 @@ class Unit {//キャラ
     resetHp() {
         this.hp = this.maxHp;
     }
-    isBanish(damage) {
+    isBanish(damage) {//ダメージを与える
         if (this.invincible || this.hp == 0) return;
         this.hp = Math.max(this.hp - damage, 0);
         if (this.hp > 0) return;
         this.defeat();
     }
-    spawn() {
+    spawnRequied() {//出現時に呼ぶ
         const size = this.data.size;
         const time = size * 0.005;
         this.scene.effect.emittConvergeCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY);
         return time;
     }
-    defeat() {
+    defeat() {//撃破
         const state = this.owner.state;
         state.start(state.defeat());
     }
-    defeatRequied() {
+    defeatRequied() {//撃破時に呼ぶ
         shared.playdata.total.point += this.point;
         shared.playdata.total.ko += this.kocount;
         this.onDefeat?.();
@@ -1232,7 +1239,7 @@ class Player extends Mono {//プレイヤーキャラ
         }
     }
 }
-class Baddies extends Mono {//敵キャラ管理
+class Baddies extends Mono {//敵キャラのコンテナ
     static form = { within: 'within', circle: 'circle', v: 'v', delta: 'delta', tri: 'tri', inverttri: 'inverttri', trail: 'trail', abrest: 'abrest', topsingle: 'topsingle', left: 'left', right: 'right', randomtop: 'randomtop', randomside: 'randomside' };
     static {
         Object.freeze(Baddies.form);
@@ -1375,7 +1382,7 @@ class Baddies extends Mono {//敵キャラ管理
             case Baddies.form.circle:
                 let time = 0;
                 for (const baddie of baddies) {
-                    time = baddie.unit.spawn();
+                    time = baddie.unit.spawnRequied();
                 }
                 yield* waitForTime(time * 0.5);
             default:
@@ -1397,7 +1404,6 @@ class Baddie extends Mono {//敵キャラ
         this.unit.set(data, scene);
         return this;
     }
-
     setAnime(isVirtical) {
         const size = this.pos.width;
         if (isVirtical) {
@@ -1406,7 +1412,7 @@ class Baddie extends Mono {//敵キャラ
             this.anime.relativeDegForTime(90, size / 5, size / 240, { easing: Ease.sineout, isLoop: true, isfirstRand: true });
         }
     }
-    whichSpawnType() {
+    whichSpawnType() {//出現した位置を得る
         let result = Baddie.spawnType.within;
         let isMoveVirtical = false;
         if (this.pos.right < 0) {
@@ -1419,12 +1425,13 @@ class Baddie extends Mono {//敵キャラ
         }
         return [result, isMoveVirtical];
     }
-    *routineBasic(user, pattern, moveSpeed, shot) {
-        user.state.start(function* () {
-            yield* waitForFrag(() => game.isWithin(user.pos.rect));
-            yield* waitForTime(Util.rand(60) * game.delta);
-            yield* shot();
+    *routineBasic(user, pattern, moveSpeed, shot) {//基本のルーチン
+        user.state.start(function* () {//射撃ステート
+            yield* waitForFrag(() => game.isWithin(user.pos.rect));//画面内に入るまで待機
+            yield* waitForTime(Util.rand(60) * game.delta);//ランダムで最大1秒まで待機
+            yield* shot();//射撃開始
         }());
+        //移動
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
@@ -1549,7 +1556,7 @@ class Baddie extends Mono {//敵キャラ
                     const deg = i * baseDeg + degOffset;
                     const newMinion = minions[i] = scene.baddies.spawn(Util.degToX(deg) * distance, Util.degToY(deg) * distance, name, 0, bullets, scene, user);
                     initMinion(minions, i);
-                    time = newMinion.unit.spawn();
+                    time = newMinion.unit.spawnRequied();
                 }
                 yield* waitForTime(time * 0.5);
             }
