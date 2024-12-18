@@ -16,12 +16,12 @@
     //プロパティをコンストラクタで定義するのとインスタンスに後から追加するのは、なにか違いがあるの？
 }
 {//仕様メモ
-//毎フレームの処理の順序　オブジェクトツリーのルートから順に、update→コンポーネントundate→postupdate　draw→コンポーネントdraw
+    //毎フレームの処理の順序　オブジェクトツリーのルートから順に、update→コンポーネントundate→postupdate　draw→コンポーネントdraw
 }
 {//やりたいことメモ
-//ハイスコアのローカルセーブ＆ロード
-//残像の色変更　HSV色空間とグラデーションマップがいる
-//絵文字のパーティクル
+    //ハイスコアのローカルセーブ＆ロード
+    //残像の色変更　HSV色空間とグラデーションマップがいる
+    //絵文字のパーティクル
 }
 'use strict';
 console.clear();
@@ -343,12 +343,18 @@ class State {//ステートコンポーネント
     }
     isEnable = (id) => this.generators.get(id) !== undefined;
     start(state, id) {
-        const newid = this.generators.get(id) ? id : Util.uniqueId();
+        const newid = id ?? Util.uniqueId();
         this.generators.set(newid, state);
         return newid;
     }
     startAndWait = (state, id) => this.wait(this.start(state, id));
     stop = (id) => this.generators.delete(id);
+    stopAll(...skipids) {
+        for (const id of this.generators.keys()) {
+            if (skipids.includes(id)) continue;
+            this.generators.delete(id);
+        }
+    }
     update() {
         for (const [id, generator] of this.generators.entries()) {
             let result;
@@ -1062,20 +1068,20 @@ class ScenePlay extends Mono {//プレイ画面
         let phaseLength = 30;
         const appears = ['crow', 'dove', 'bigcrow'];
         const bossName = 'greatcrow';
-        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.elaps > phaseLength) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     const baddieName = appears[Util.rand(appears.length - 1)];
-        //     const data = datas.baddies[baddieName];
-        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
+        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+            if (this.elaps > phaseLength) {
+                yield undefined;
+                continue;
+            }
+            const baddieName = appears[Util.rand(appears.length - 1)];
+            const data = datas.baddies[baddieName];
+            const formation = data.forms[Util.rand(data.forms.length - 1)];
 
-        //     const spawnMax = Math.floor(game.width / data.size) - 2;
-        //     const spawnCount = Util.rand(spawnMax);
-        //     this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
-        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        // }
+            const spawnMax = Math.floor(game.width / data.size) - 2;
+            const spawnCount = Util.rand(spawnMax);
+            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
+            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         if (this.isFailure) return;
@@ -1172,7 +1178,7 @@ class Unit {//キャラ
     }
     defeat() {//撃破
         const state = this.owner.state;
-        state.start(state.defeat());
+        state.start(state.defeat(),'defeat');
     }
     defeatRequied() {//撃破時に呼ぶ
         shared.playdata.total.point += this.point;
@@ -1561,7 +1567,8 @@ class Baddie extends Mono {//敵キャラ
                 yield* waitForTime(time * 0.5);
             }
             user.state.defeat = function* () {
-                //他のステートのリセットがいるよ
+                killMinions();
+                user.state.stopAll('defeat');
                 scene.baddiesbullets.child.removeAll();
                 const pos = user.pos;
                 for (let i = 0; i < 16; i++) {
@@ -1641,6 +1648,7 @@ class Baddie extends Mono {//敵キャラ
             let currentShot = 0;
             while (user.unit.hpRatio > 0.5) {
                 if (currentShot === 0) yield* summonMinions(minionName, 7, user.pos.width * 0.75);
+
                 yield* user.state.startAndWait(shotList[currentShot]());
                 if (!(user.unit.hpRatio > 0.5)) break;
                 currentShot = (currentShot + 1) % shotList.length;
