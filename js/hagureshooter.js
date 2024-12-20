@@ -5,7 +5,7 @@
     //動的言語だからか入力補完があまり効かなくて不便～
     //thisは.の左のオブジェクトのこと！thisを固定するにはbindやCallする　アロー関数=>のthisは変わらないよ
     //ゲッター・セッターはアロー関数=>に未対応
-    //スプレッド構文[...配列]
+    //スプレッド構文[1,...配列A,2...配列B]
     //Mapは名前で読み書きできる配列
     //ジェネレーター構文*method(){}関数を中断と再開できる アロー関数=>はない
     //jsファイルを後から読み込むには、script要素を追加してonloadイベントで待つのがいい？
@@ -30,6 +30,8 @@ class Game {//ゲーム本体
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
+        this.range = 0;
+        this.rangeRect = new Rect().set(0, 0, width, height);
         this.layers = new Layers(width, height);
         this.root = new Mono(new State(), new Child());
         this.input = new Input();
@@ -96,8 +98,11 @@ class Game {//ゲーム本体
     pushScene = scene => this.root.child.add(scene);
     popScene = () => this.root.child.pop();
     setState = (state) => this.root.state.start(state);
-    isOutOfRange = (rect) => !this.screenRect.isIntersect(rect);
-    isWithin = (rect) => !this.screenRect.isOverflow(rect);
+    isOutOfScreen = (rect) => !this.screenRect.isIntersect(rect);
+    isWithinScreen = (rect) => !this.screenRect.isOverflow(rect);
+    isOutOfRange = (rect) => !this.rangeRect.isIntersect(rect);
+    isWithinRange = (rect) => !this.rangeRect.isOverflow(rect);
+    setRange = (range) => this.rangeRect.set(-range, -range, this.width + range + range, this.height + range + range);
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
     get sec() { return this.time / 1000; }
 }
@@ -998,9 +1003,16 @@ class ScenePlay extends Mono {//プレイ画面
     }
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
-            if (game.isOutOfRange(bullet.collision.rect)) {
-                bullet.remove();
-                return;
+            if (bullet.bullet.removeOffscreen) {
+                if (game.isOutOfScreen(bullet.collision.rect)) {
+                    bullet.remove();
+                    return;
+                }
+            } else {
+                if (game.isOutOfRange(bullet.collision.rect)) {
+                    bullet.remove();
+                    return;
+                }
             }
             targets.child.each((target) => {
                 if (!bullet.collision.hit(target)) return;
@@ -1011,11 +1023,14 @@ class ScenePlay extends Mono {//プレイ画面
             });
         }
         this.baddies.child.each((baddie) => {
-            if (baddie.unit.isEnableWithout) return;
-            if (!baddie.unit.isEntry) {
-                if (!game.isOutOfRange(baddie.collision.rect)) baddie.unit.isEntry = true;
-            } else {
-                if (game.isOutOfRange(baddie.collision.rect)) baddie.remove();
+            if (baddie.unit.removeOffscreen && game.isOutOfScreen(baddie.collision.rect)) {
+                console.log(`${baddie.unit.name}${ baddie.childIndex}が画面外に出て消えたよ`);
+                baddie.remove();
+                return;
+            }
+            if (game.isOutOfRange(baddie.collision.rect)) {
+                console.log(`${baddie.unit.name }${ baddie.childIndex}が範囲外に出て消えたよ`);
+                baddie.remove();
             }
         });
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
@@ -1140,7 +1155,7 @@ class Unit {//キャラ
     }
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
-        this.isEntry = this.isEnableWithout = this.invincible = this.firing = false;//画面内に入った、画面外に出ると消える、無敵、射撃中
+        this.removeOffscreen = this.invincible = this.firing = false;//画面外に出ると消える、無敵、射撃中
         this.data = this.scene = this.onDefeat = undefined;
     }
     set(data, scene) {
@@ -1178,7 +1193,7 @@ class Unit {//キャラ
     }
     defeat() {//撃破
         const state = this.owner.state;
-        state.start(state.defeat(),'defeat');
+        state.start(state.defeat(), 'defeat');
     }
     defeatRequied() {//撃破時に呼ぶ
         shared.playdata.total.point += this.point;
@@ -1433,7 +1448,7 @@ class Baddie extends Mono {//敵キャラ
     }
     *routineBasic(user, pattern, moveSpeed, shot) {//基本のルーチン
         user.state.start(function* () {//射撃ステート
-            yield* waitForFrag(() => game.isWithin(user.pos.rect));//画面内に入るまで待機
+            yield* waitForFrag(() => game.isWithinScreen(user.pos.rect));//画面内に入るまで待機
             yield* waitForTime(Util.rand(60) * game.delta);//ランダムで最大1秒まで待機
             yield* shot();//射撃開始
         }());
@@ -1481,7 +1496,7 @@ class Baddie extends Mono {//敵キャラ
         zako2: function* (user, pattern, bullets, scene) {
             const moveSpeed = 100;
             const shot1 = function* () {
-                yield* waitForFrag(() => game.isWithin(user.pos.rect));
+                yield* waitForFrag(() => game.isWithinScreen(user.pos.rect));
                 yield* waitForTime(Util.rand(60) * game.delta);
                 while (true) {
                     bullets.mulitWay(user.pos.x, user.pos.y, { color: 'red' });
@@ -1521,6 +1536,7 @@ class Baddie extends Mono {//敵キャラ
             yield* user.routineBasic(user, pattern, moveSpeed, shot1);
         },
         boss1: function* (user, pattern, bullets, scene) {
+            //取り巻き召喚
             const minionName = 'torimakicrow';
             let minions = [];
             const removeMinions = () => {
@@ -1533,7 +1549,6 @@ class Baddie extends Mono {//敵キャラ
             }
             const initMinion = (minions, index) => {
                 const unit = minions[index].unit;
-                unit.isEnableWithout = true;
                 unit.onDefeat = () => {
                     minions[index] = undefined;
                 }
@@ -1566,6 +1581,7 @@ class Baddie extends Mono {//敵キャラ
                 }
                 yield* waitForTime(time * 0.5);
             }
+            //撃破エフェクト
             user.state.defeat = function* () {
                 killMinions();
                 user.state.stopAll('defeat');
@@ -1577,6 +1593,7 @@ class Baddie extends Mono {//敵キャラ
                 }
                 user.unit.defeatRequied();
             }
+            //弾パターン
             const circleShot = function* () {
                 const count = 36;
                 for (let i = 0; i < 6; i++) {
@@ -1597,9 +1614,12 @@ class Baddie extends Mono {//敵キャラ
             }
             const ringShot = function* () {
                 const speed = 500;
-                const bs = bullets.circle(user.pos.x, user.pos.y, { speed: 250, count: 18, color: 'lime' });
+                const bulletlist = [
+                    ...bullets.circle(user.pos.left, user.pos.y, { speed: 250, count: 18, color: 'lime', removeOffscreen: false }),
+                    ...bullets.circle(user.pos.right, user.pos.y, { speed: 250, count: 18, color: 'lime', removeOffscreen: false })
+                ];
                 yield* waitForTime(0.5);
-                for (const b of bs) {
+                for (const b of bulletlist) {
                     const [x, y] = Util.normalize(scene.player.pos.x - b.pos.x, scene.player.pos.y - b.pos.y);
                     b.move.set(x * speed, y * speed, 2, 0);
                 }
@@ -1648,7 +1668,6 @@ class Baddie extends Mono {//敵キャラ
             let currentShot = 0;
             while (user.unit.hpRatio > 0.5) {
                 if (currentShot === 0) yield* summonMinions(minionName, 7, user.pos.width * 0.75);
-
                 yield* user.state.startAndWait(shotList[currentShot]());
                 if (!(user.unit.hpRatio > 0.5)) break;
                 currentShot = (currentShot + 1) % shotList.length;
@@ -1708,6 +1727,7 @@ class Bullet {//弾コンポーネント
     set(damage, point) {
         this.damage = damage;
         this.point = point;
+        this.removeOffscreen = true;
     }
 }
 class BulletBox extends Mono {//弾
@@ -1716,7 +1736,7 @@ class BulletBox extends Mono {//弾
         this.child.drawlayer = 'effect';
         this.child.addCreator('bullet', () => new Mono(new Guided(), new Move(), new Collision(), new Brush(), new Bullet()));
     }
-    firing(x, y, vx, vy, firstSpeed, accelTime, color, damage, point) {
+    firing(x, y, vx, vy, firstSpeed, accelTime, color, damage, point, removeOffscreen) {
         const bullet = this.child.pool('bullet');
         bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
@@ -1727,24 +1747,25 @@ class BulletBox extends Mono {//弾
         bullet.brush.circle();
         bullet.brush.color = color;
         bullet.bullet.set(damage, point);
+        bullet.bullet.removeOffscreen = removeOffscreen;
         return bullet;
     }
-    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0, damage = 1, point = 0 } = {}) {
+    mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0, damage = 1, point = 0, removeOffscreen = true } = {}) {
         let d = deg;
         if (aim) d = Util.xyToDeg(aim.pos.x - x, aim.pos.y - y);
         const offset = space * (count - 1) / 2;
         const result = [];
         for (let i = 0; i < count; i++) {
-            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, firstSpeed, accelTime, color, damage, point);
+            const bullet = result[i] = this.firing(x, y, Util.degToX(((d - offset) + (space * i)) % 360) * speed, Util.degToY(((d - offset) + (space * i)) % 360) * speed, firstSpeed, accelTime, color, damage, point, removeOffscreen);
             if (guided) bullet.guided.set(guided, guidedSpeed, 0, 2);
         }
         return result;
     }
-    circle(x, y, { count = 36, offset = 0, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', damage = 1, point = 0 } = {}) {
+    circle(x, y, { count = 36, offset = 0, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', damage = 1, point = 0, removeOffscreen = true } = {}) {
         const d = 360 / count;
         const result = [];
         for (let i = 0; i < count; i++) {
-            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, firstSpeed, accelTime, color, damage, point);
+            result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, firstSpeed, accelTime, color, damage, point, removeOffscreen);
         }
         return result;
     }
@@ -1948,6 +1969,7 @@ export const shared = {//共用変数
 }
 export const game = new Game();
 game.start([cfg.font.default, cfg.font.emoji], () => {
+    game.setRange(200);
     game.input.keybind('z', 'z', { button: 1 });
     game.input.keybind('x', 'x', { button: 0 });
 
