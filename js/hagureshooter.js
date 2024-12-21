@@ -30,7 +30,6 @@ class Game {//ゲーム本体
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
-        this.range = 0;
         this.rangeRect = new Rect().set(0, 0, width, height);
         this.layers = new Layers(width, height);
         this.root = new Mono(new State(), new Child());
@@ -103,6 +102,7 @@ class Game {//ゲーム本体
     isOutOfRange = (rect) => !this.rangeRect.isIntersect(rect);
     isWithinRange = (rect) => !this.rangeRect.isOverflow(rect);
     setRange = (range) => this.rangeRect.set(-range, -range, this.width + range + range, this.height + range + range);
+    get range() { return Math.abs(this.rangeRect.x) };
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
     get sec() { return this.time / 1000; }
 }
@@ -1003,16 +1003,9 @@ class ScenePlay extends Mono {//プレイ画面
     }
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
-            if (bullet.bullet.removeOffscreen) {
-                if (game.isOutOfScreen(bullet.collision.rect)) {
-                    bullet.remove();
-                    return;
-                }
-            } else {
-                if (game.isOutOfRange(bullet.collision.rect)) {
-                    bullet.remove();
-                    return;
-                }
+            if ((bullet.bullet.removeOffscreen && game.isOutOfScreen(bullet.pos.rect)) || game.isOutOfRange(bullet.pos.rect)) {
+                bullet.remove();
+                return;
             }
             targets.child.each((target) => {
                 if (!bullet.collision.hit(target)) return;
@@ -1023,13 +1016,13 @@ class ScenePlay extends Mono {//プレイ画面
             });
         }
         this.baddies.child.each((baddie) => {
-            if (baddie.unit.removeOffscreen && game.isOutOfScreen(baddie.collision.rect)) {
-                console.log(`${baddie.unit.name}${ baddie.childIndex}が画面外に出て消えたよ`);
+            if (baddie.unit.removeOffscreen && game.isOutOfScreen(baddie.pos.rect)) {
+                console.log(`${baddie.unit.data.name}${baddie.childIndex}が画面外に出て消えたよ`);
                 baddie.remove();
                 return;
             }
-            if (game.isOutOfRange(baddie.collision.rect)) {
-                console.log(`${baddie.unit.name }${ baddie.childIndex}が範囲外に出て消えたよ`);
+            if (game.isOutOfRange(baddie.pos.rect)) {
+                console.log(`${baddie.unit.data.name}${baddie.childIndex}が範囲外に出て消えたよ`);
                 baddie.remove();
             }
         });
@@ -1446,12 +1439,16 @@ class Baddie extends Mono {//敵キャラ
         }
         return [result, isMoveVirtical];
     }
-    *routineBasic(user, pattern, moveSpeed, shot) {//基本のルーチン
-        user.state.start(function* () {//射撃ステート
-            yield* waitForFrag(() => game.isWithinScreen(user.pos.rect));//画面内に入るまで待機
-            yield* waitForTime(Util.rand(60) * game.delta);//ランダムで最大1秒まで待機
-            yield* shot();//射撃開始
-        }());
+    *routineBasicShot(user, pattern, shot) {//汎用射撃ルーチン
+        yield* waitForFrag(() => game.isWithinScreen(user.pos.rect));//画面内に入るまで待機
+        yield* waitForTime(Util.rand(60) * game.delta);//ランダムで最大1秒まで待機
+        while (true) {
+            if (game.isOutOfScreen(user.pos.rect)) yield undefined;//画面外にいるなら射撃しない
+            yield* shot();//射撃
+        }
+    }
+    *routineBasic(user, pattern, moveSpeed, shot) {//汎用ルーチン
+        user.state.start(user.routineBasicShot(user, pattern, shot));
         //移動
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
@@ -1485,23 +1482,18 @@ class Baddie extends Mono {//敵キャラ
     routines = {
         zako1: function* (user, pattern, bullets, scene) {
             const moveSpeed = 100;
-            const shot1 = function* () {
-                while (true) {
-                    bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
-                    yield* waitForTime(2);
-                }
-            }
-            yield* user.routineBasic(user, pattern, moveSpeed, shot1);
+            yield* user.routineBasic(user, pattern, moveSpeed, function* () {
+                bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
+                yield* waitForTime(2);
+            });
         },
         zako2: function* (user, pattern, bullets, scene) {
             const moveSpeed = 100;
             const shot1 = function* () {
                 yield* waitForFrag(() => game.isWithinScreen(user.pos.rect));
                 yield* waitForTime(Util.rand(60) * game.delta);
-                while (true) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { color: 'red' });
-                    yield* waitForTime(2);
-                }
+                bullets.mulitWay(user.pos.x, user.pos.y, { color: 'red' });
+                yield* waitForTime(2);
             }
             const [spawnType, isAnimeVirtical] = user.whichSpawnType();
             user.setAnime(isAnimeVirtical);
@@ -1512,7 +1504,7 @@ class Baddie extends Mono {//敵キャラ
                     user.state.start(shot1());
                     yield* user.move.relative(game.width * 0.4, 0, moveSpeed, { easing: Ease.liner, min: 0 });
                     yield* user.move.relative(game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sinein, min: 0.5 });
-                    yield* user.move.relative(user.pos.width, 0, moveSpeed * 2);
+                    yield* user.move.relative(game.range + user.pos.width, 0, moveSpeed * 2);
                     break;
                 case Baddie.spawnType.right:
                     yield* user.move.relative(game.width - user.pos.x, 0, moveSpeed * 2);
@@ -1520,7 +1512,7 @@ class Baddie extends Mono {//敵キャラ
                     user.state.start(shot1());
                     yield* user.move.relative(-game.width * 0.4, 0, moveSpeed, { easing: Ease.liner, min: 0 });
                     yield* user.move.relative(-game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sinein, min: 0.5 });
-                    yield* user.move.relative(-user.pos.width, 0, moveSpeed * 2);
+                    yield* user.move.relative(-(game.range + user.pos.width), 0, moveSpeed * 2);
                     break;
                 default:
             }
@@ -1969,7 +1961,7 @@ export const shared = {//共用変数
 }
 export const game = new Game();
 game.start([cfg.font.default, cfg.font.emoji], () => {
-    game.setRange(200);
+    game.setRange(game.width * 0.25);
     game.input.keybind('z', 'z', { button: 1 });
     game.input.keybind('x', 'x', { button: 0 });
 
