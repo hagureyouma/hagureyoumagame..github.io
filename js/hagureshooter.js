@@ -1005,6 +1005,7 @@ class ScenePlay extends Mono {//プレイ画面
         const _bulletHitcheck = (bullet, targets) => {
             if ((bullet.bullet.removeOffscreen && game.isOutOfScreen(bullet.pos.rect)) || game.isOutOfRange(bullet.pos.rect)) {
                 bullet.remove();
+                //console.log(`$弾が範囲外に出て消えたよ`);
                 return;
             }
             targets.child.each((target) => {
@@ -1017,12 +1018,12 @@ class ScenePlay extends Mono {//プレイ画面
         }
         this.baddies.child.each((baddie) => {
             if (baddie.unit.removeOffscreen && game.isOutOfScreen(baddie.pos.rect)) {
-                console.log(`${baddie.unit.data.name}${baddie.childIndex}が画面外に出て消えたよ`);
+                //console.log(`${baddie.unit.data.name}${baddie.childIndex}が画面外に出て消えたよ`);
                 baddie.remove();
                 return;
             }
             if (game.isOutOfRange(baddie.pos.rect)) {
-                console.log(`${baddie.unit.data.name}${baddie.childIndex}が範囲外に出て消えたよ`);
+                //console.log(`${baddie.unit.data.name}${baddie.childIndex}が範囲外に出て消えたよ`);
                 baddie.remove();
             }
         });
@@ -1072,24 +1073,24 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * stageDefault() {
-        this.elaps = 0;
-        let phaseLength = 30;
         const appears = ['crow', 'dove', 'bigcrow'];
         const bossName = 'greatcrow';
-        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-            if (this.elaps > phaseLength) {
-                yield undefined;
-                continue;
-            }
-            const baddieName = appears[Util.rand(appears.length - 1)];
-            const data = datas.baddies[baddieName];
-            const formation = data.forms[Util.rand(data.forms.length - 1)];
-
-            const spawnMax = Math.floor(game.width / data.size) - 2;
-            const spawnCount = Util.rand(spawnMax);
-            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
-            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        }
+        const phaseLength = 30;
+        this.elaps = 0;
+        //道中
+        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+        //     if (this.elaps > phaseLength) {
+        //         yield undefined;
+        //         continue;
+        //     }
+        //     const baddieName = appears[Util.rand(appears.length - 1)];
+        //     const data = datas.baddies[baddieName];
+        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
+        //     const spawnMax = Math.floor(game.width / data.size) - 2;
+        //     const spawnCount = Util.rand(spawnMax);
+        //     this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
+        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        // }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         if (this.isFailure) return;
@@ -1501,7 +1502,7 @@ class Baddie extends Mono {//敵キャラ
                 case Baddie.spawnType.left:
                     yield* user.move.relative(0 - user.pos.x, 0, moveSpeed * 2);
                     yield* user.move.relative(game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sineout, min: 0.5 });
-                    user.state.start(shot1());
+                    user.state.start(user.routineBasicShot(user, pattern, shot1));
                     yield* user.move.relative(game.width * 0.4, 0, moveSpeed, { easing: Ease.liner, min: 0 });
                     yield* user.move.relative(game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sinein, min: 0.5 });
                     yield* user.move.relative(game.range + user.pos.width, 0, moveSpeed * 2);
@@ -1509,7 +1510,7 @@ class Baddie extends Mono {//敵キャラ
                 case Baddie.spawnType.right:
                     yield* user.move.relative(game.width - user.pos.x, 0, moveSpeed * 2);
                     yield* user.move.relative(-game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sineout, min: 0.5 });
-                    user.state.start(shot1());
+                    user.state.start(user.routineBasicShot(user, pattern, shot1));
                     yield* user.move.relative(-game.width * 0.4, 0, moveSpeed, { easing: Ease.liner, min: 0 });
                     yield* user.move.relative(-game.width * 0.3, 0, moveSpeed * 2, { easing: Ease.sinein, min: 0.5 });
                     yield* user.move.relative(-(game.range + user.pos.width), 0, moveSpeed * 2);
@@ -1519,13 +1520,10 @@ class Baddie extends Mono {//敵キャラ
         },
         zako3: function* (user, pattern, bullets, scene) {
             const moveSpeed = 50;
-            const shot1 = function* () {
-                while (true) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { color: 'aqua', aim: scene.player });
-                    yield* waitForTime(2);
-                }
-            }
-            yield* user.routineBasic(user, pattern, moveSpeed, shot1);
+            yield* user.routineBasic(user, pattern, moveSpeed, function* () {
+                bullets.mulitWay(user.pos.x, user.pos.y, { color: 'aqua', aim: scene.player });
+                yield* waitForTime(2);
+            });
         },
         boss1: function* (user, pattern, bullets, scene) {
             //取り巻き召喚
@@ -1587,7 +1585,7 @@ class Baddie extends Mono {//敵キャラ
             }
             //弾パターン
             const circleShot = function* () {
-                const count = 36;
+                const count = 24;
                 for (let i = 0; i < 6; i++) {
                     bullets.circle(user.pos.x, user.pos.y, { count: count, offset: ((360 / count) * 0.5) * (i % 2) });
                     yield* waitForTime(0.5);
@@ -1595,20 +1593,20 @@ class Baddie extends Mono {//敵キャラ
             }
             const spiralShot = function* () {
                 const deg = 360 / 6;
-                let counter = 0;
-                for (let i = 0; i < 64; i++) {
+                let degOffset = 0;
+                for (let i = 0; i < 16; i++) {
                     for (let j = 0; j < 6; j++) {
-                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: (deg * j) + counter, count: 1, speed: 100, color: 'aqua' });
+                        bullets.mulitWay(user.pos.x, user.pos.y, { deg: (deg * j) + degOffset, count: 1, speed: 100, color: 'lime' });
                     }
-                    yield* waitForTime(0.05);
-                    counter += 11;
+                    yield* waitForTime(0.2);
+                    degOffset += 18;
                 }
             }
             const ringShot = function* () {
                 const speed = 500;
                 const bulletlist = [
-                    ...bullets.circle(user.pos.left, user.pos.y, { speed: 250, count: 18, color: 'lime', removeOffscreen: false }),
-                    ...bullets.circle(user.pos.right, user.pos.y, { speed: 250, count: 18, color: 'lime', removeOffscreen: false })
+                    ...bullets.circle(user.pos.left, user.pos.y, { speed: 250, count: 12, color: 'aqua', removeOffscreen: false }),
+                    ...bullets.circle(user.pos.right, user.pos.y, { speed: 250, count: 12, color: 'aqua', removeOffscreen: false })
                 ];
                 yield* waitForTime(0.5);
                 for (const b of bulletlist) {
@@ -1622,10 +1620,10 @@ class Baddie extends Mono {//敵キャラ
                     yield* ringShot();
                 }
             }
-            const fanShot = function* (rangeDeg = 45, radiantSpeed = 180, bulletSpeed = 400) {
+            const fanShot = function* (count=3,rangeDeg = 45, radiantSpeed = 360, bulletSpeed = 400) {                                
                 const timeOfs = game.sec;
                 for (let i = 0; i < 20; i++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), count: 1, speed: bulletSpeed, color: 'aqua' });
+                    bullets.mulitWay(user.pos.x, user.pos.y, {count:count, deg: 270 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), count: 1, speed: bulletSpeed, color: 'lime' });
                     yield* waitForTime(0.125);
                 }
             }
