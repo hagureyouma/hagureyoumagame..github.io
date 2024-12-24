@@ -934,20 +934,25 @@ class SceneTitle extends Mono {//タイトル画面
     *stateMenu() {
         this.titleMenu.isExist = true;
         while (true) {
-            switch (yield* this.titleMenu.stateSelect()) {
-                case text.start:
-                    this.isExist = false;
-                    yield* new ScenePlay().stateDefault();
-                    this.isExist = true;
-                    break;
-                case text.highscore:
-                    this.isExist = false;
-                    yield* new SceneHighscore().stateDefault();
-                    this.isExist = true;
-                    break;
-                default:
-                    this.titleMenu.isExist = false;
-                    return;
+            const result = yield* this.titleMenu.stateSelect();
+            if (result) {
+                this.isExist = false;
+                switch (result) {
+                    case text.start:
+                        yield* new ScenePlay().stateDefault();
+                        break;
+                    case text.highscore:
+                        yield* new SceneHighscore().stateDefault();
+                        break;
+                    case text.credit:
+                        yield* new SceneCredit().stateDefault();
+                        break;
+                    default:
+                }
+                this.isExist = true;
+            } else {
+                this.titleMenu.isExist = false;
+                return;
             }
         }
     }
@@ -999,13 +1004,12 @@ class ScenePlay extends Mono {//プレイ画面
         this.telop.isExist = false;
     }
     update() {
-        this.player.maneuver();
+        this.player.maneuver();//プレイヤーの入力受付を優先するのでここで受け付ける
     }
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
             if ((bullet.bullet.removeOffscreen && game.isOutOfScreen(bullet.pos.rect)) || game.isOutOfRange(bullet.pos.rect)) {
                 bullet.remove();
-                //console.log(`$弾が範囲外に出て消えたよ`);
                 return;
             }
             targets.child.each((target) => {
@@ -1016,19 +1020,19 @@ class ScenePlay extends Mono {//プレイ画面
                 target.unit.isBanish(bullet.bullet.damage);
             });
         }
-        this.baddies.child.each((baddie) => {
+        this.baddies.child.each((baddie) => {//画面外または範囲外に出た敵キャラを消す
             if (baddie.unit.removeOffscreen && game.isOutOfScreen(baddie.pos.rect)) {
-                //console.log(`${baddie.unit.data.name}${baddie.childIndex}が画面外に出て消えたよ`);
                 baddie.remove();
                 return;
             }
             if (game.isOutOfRange(baddie.pos.rect)) {
-                //console.log(`${baddie.unit.data.name}${baddie.childIndex}が範囲外に出て消えたよ`);
                 baddie.remove();
             }
         });
+        //弾の当たり判定
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
+        //経過時間
         this.elaps += game.delta;
         shared.playdata.total.time += game.delta;
     }
@@ -1124,7 +1128,7 @@ class ScenePlay extends Mono {//プレイ画面
     resetStage() {
         this.player?.remove();
         this.playerside.child.add(this.player = new Player(this.playerbullets, this));
-        this.player.unit.invincible = true;//無敵
+        //this.player.unit.invincible = true;//無敵
         this.playerbullets.child.removeAll();
         this.baddies.child.removeAll();
         this.baddiesbullets.child.removeAll();
@@ -1201,10 +1205,11 @@ class Unit {//キャラ
 class Player extends Mono {//プレイヤーキャラ
     constructor(bullets, scene) {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
+        const data = datas.player.data;
         this.state.start(this.stateDefault.call(this, bullets, scene));
-        this.moji.set(Util.parseUnicode(EMOJI.CAT), { x: game.width * 0.5, y: game.height - 20, size: 40, color: 'black', font: cfg.font.emoji.name, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
-        this.unit.set(undefined, scene);
+        this.unit.set(data, scene);
         this.unit.kocount = 0;
     }
     maneuver() {
@@ -1618,12 +1623,21 @@ class Baddie extends Mono {//敵キャラ
             const ringShotRepeat = function* () {
                 while (true) {
                     yield* ringShot();
+                    yield* waitForTime(2);
                 }
             }
-            const fanShot = function* (count=3,rangeDeg = 45, radiantSpeed = 360, bulletSpeed = 400) {                                
+            const fanShot = function* (count = 3, rangeDeg = 15, radiantSpeed = 180, bulletSpeed = 200) {
                 const timeOfs = game.sec;
-                for (let i = 0; i < 20; i++) {
-                    bullets.mulitWay(user.pos.x, user.pos.y, {count:count, deg: 270 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), count: 1, speed: bulletSpeed, color: 'lime' });
+                for (let i = 0; i < 10; i++) {
+                    bullets.mulitWay(user.pos.x, user.pos.y, { deg: 270 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), count: count, speed: bulletSpeed, color: 'lime' });
+                    yield* waitForTime(0.3);
+                }
+            }
+            const fanShotParallel = function* (count = 3, rangeDeg = 15, radiantSpeed = 180, bulletSpeed = 400) {
+                const timeOfs = game.sec;
+                for (let i = 0; i < 18; i++) {
+                    bullets.mulitWay(user.pos.left, user.pos.y, { deg: 260 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), space: 7, count: count, speed: bulletSpeed, color: 'lime' });
+                    bullets.mulitWay(user.pos.right, user.pos.y, { deg: 280 + (rangeDeg * Util.degToX((game.sec - timeOfs) * radiantSpeed)), space: 7, count: count, speed: bulletSpeed, color: 'lime' });
                     yield* waitForTime(0.125);
                 }
             }
@@ -1643,6 +1657,7 @@ class Baddie extends Mono {//敵キャラ
                     yield* waitForTime(2);
                 }
             }
+            //ボスの移動
             const resetPos = function* () {
                 yield* user.move.to(game.width * 0.5, game.height * 0.3, 100, { easing: Ease.sineInOut });
             }
@@ -1653,7 +1668,6 @@ class Baddie extends Mono {//敵キャラ
             }
             //ここからボスの動作
             yield* resetPos();
-            //user.setAnime();
             let shotList = [fanShot, ringShot, guidedShot];
             let currentShot = 0;
             while (user.unit.hpRatio > 0.5) {
@@ -1668,7 +1682,7 @@ class Baddie extends Mono {//敵キャラ
                 }
             }
             yield* resetPos();
-            shotList = [fanShot, circleShot, spiralShot, ringShot];
+            shotList = [fanShotParallel, circleShot, spiralShot, ringShot];
             currentShot = 0;
             while (user.unit.hpRatio > 0.25) {
                 if (currentShot === 0) yield* summonMinions(minionName, 9, user.pos.width * 0.75);
@@ -1697,12 +1711,13 @@ class Baddie extends Mono {//敵キャラ
             user.move.setRevo(60);
             yield* waitForTime(Util.rand(60) * game.delta);
             while (true) {
-                bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
-                yield* waitForTime(2);
-                if (Util.rand(2) === 0) {
+                const r = Util.rand(100);
+                if (r > 70) {
                     bullets.mulitWay(user.pos.linkX, user.pos.linkX, { count: 1, color: 'aqua', aim: scene.player });
-                    yield* waitForTime(2);
+                } else {
+                    bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
                 }
+                yield* waitForTime(3);
             }
         }
     }
@@ -1856,6 +1871,22 @@ class SceneHighscore extends Mono {//ハイスコア画面
         return;
     }
 }
+class SceneCredit extends Mono {//クレジット画面
+    constructor() {
+        super(new Child());
+        this.child.drawlayer = 'ui';
+        this.child.add(new Label(text.credit, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+    }
+    *stateDefault() {
+        game.pushScene(this);
+        while (true) {
+            yield undefined;
+            if (game.input.isPress('z') || game.input.isPress('x')) break;
+        }
+        game.popScene();
+        return;
+    }
+}
 export const cfg = {//ゲームの設定
     layer: ['effect', 'ui'],
     font: {
@@ -1877,7 +1908,7 @@ export const cfg = {//ゲームの設定
         repeatWait: 0.125,
     }
 }
-let text = {//ゲームのテキスト
+let text = {//テキスト
     title: 'シューティングゲーム', title2: 'のようなもの', presskey: 'Zキーを押してね',
     explanation1: '操作方法：↑↓←→ 選択、移動',
     explanation2: 'Z 決定、攻撃　X 取消、中断',
@@ -1897,7 +1928,7 @@ const EMOJI = {//Font Awesomeの絵文字のUnicode
     CROWN: 'f521'
 }
 Object.freeze(EMOJI);
-class BaddieData {//敵キャラデータ
+class CharacterData {//キャラデータ
     constructor(name, char, color, size, hp, point, routine, forms) {
         this.name = name;
         this.char = char;
@@ -1911,14 +1942,15 @@ class BaddieData {//敵キャラデータ
 }
 export const datas = {//ゲームデータ
     baddies: {
-        obake: new BaddieData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
-        crow: new BaddieData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
-        dove: new BaddieData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
-        bigcrow: new BaddieData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
-        greatcrow: new BaddieData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle]),
-        torimakicrow: new BaddieData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within]),
+        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
+        crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
+        dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
+        bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
+        greatcrow: new CharacterData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle]),
+        torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within]),
     },
     player: {
+        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 1, 0),
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
@@ -1950,13 +1982,14 @@ class scoreData {//成績データ
         this.ko = from?.ko || 0;
     }
 }
-export const shared = {//共用変数
+export const shared = {//グローバル変数
     playdata: {
         total: new scoreData(),
         backup: new scoreData()
     },
     highscores: []
 }
+//ゲーム実行
 export const game = new Game();
 game.start([cfg.font.default, cfg.font.emoji], () => {
     game.setRange(game.width * 0.25);
