@@ -849,14 +849,9 @@ class Menu extends Mono {//メニュー
         this.child.add(this.curL = new Label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, align: 2, valign: 1 }));
         this.child.add(this.curR = new Label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, valign: 1 }));
         this.indexOffset = this.child.objs.length;
-        this.callbacks = [];
-        this.preCallback;
-        this.postCallback;
-        this.cancelCallback;
     }
-    add(text, callback) {
+    add(text) {
         this.child.add(new Label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }))
-        this.callbacks.push(callback);
     }
     *stateSelect(newIndex = this.index) {
         const length = this.child.objs.length - this.indexOffset;
@@ -870,18 +865,8 @@ class Menu extends Mono {//メニュー
             yield undefined;
             yield* move.bind(this)('up', length - 1);
             yield* move.bind(this)('down', 1);
-            if (game.input.isPress('z')) {
-                this.preCallback?.();
-                if (this.callbacks[this.index]) yield* this.callbacks[this.index]();
-                this.postCallback?.();
-                return this.child.objs[this.index + this.indexOffset].moji.getText;
-            }
-            if (this.isEnableCancel && game.input.isPress('x')) {
-                this.preCallback?.();
-                this.cancelCallback?.();
-                this.postCallback?.();
-                return text.cancel;
-            }
+            if (game.input.isPress('z')) return this.child.objs[this.index + this.indexOffset].moji.getText;
+            if (this.isEnableCancel && game.input.isPress('x')) return text.cancel;
         }
     }
     moveIndex(newIndex) {
@@ -925,12 +910,10 @@ class SceneTitle extends Mono {//タイトル画面
         this.child.add(this.presskey = new Label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
         //メニュー
         this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
+        this.titleMenu.add(text.start);
+        this.titleMenu.add(text.highscore);
+        this.titleMenu.add(text.credit);
         this.titleMenu.isEnableCancel = true;
-        this.titleMenu.preCallback = () => { this.isExist = false; }
-        this.titleMenu.postCallback = () => { this.isExist = true; }
-        this.titleMenu.add(text.start, function* () { yield* new ScenePlay().stateDefault() });
-        this.titleMenu.add(text.highscore, function* () { yield* new SceneHighscore().stateDefault() });
-        this.titleMenu.add(text.credit, function* () { yield* new SceneCredit().stateDefault() });
         this.titleMenu.isExist = false;
         //操作方法
         // this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
@@ -950,8 +933,18 @@ class SceneTitle extends Mono {//タイトル画面
     }
     *stateTitleMenu() {
         this.titleMenu.isExist = true;
-        while ((yield* this.titleMenu.stateSelect()) !== text.cancel);
-        this.titleMenu.isExist = false;
+        while (true) {
+            const result = yield* this.titleMenu.stateSelect();
+            if (result === text.cancel) {
+                this.titleMenu.isExist = false;
+                return;
+            }
+            this.isExist = false;
+            if (result === text.start) yield* new ScenePlay().stateDefault();
+            if (result === text.highscore) yield* new SceneHighscore().stateDefault();
+            if (result === text.credit) yield* new SceneCredit().stateDefault();
+            this.isExist = true;
+        }
     }
 }
 class ScenePlay extends Mono {//プレイ画面
@@ -1048,7 +1041,14 @@ class ScenePlay extends Mono {//プレイ画面
             if (this.isFailure) {//負けた
                 yield* this.showTelop(text.gameover, 2);
                 if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
-                yield* new SceneGameOver(this.newGame).stateDefault();
+                switch (yield* new SceneGameOver(this.newGame).stateDefault()) {
+                    case text.continue:
+                        this.continueGame();
+                        break;
+                    case text.returntitle:
+                        game.popScene();
+                        return;
+                }
                 continue;
             }
             if (game.input.isPress('x')) {//ポーズメニューを開く
@@ -1816,20 +1816,21 @@ class SceneClear extends Mono {//ステージクリア画面
     }
 }
 class SceneGameOver extends Mono {//ゲームオーバー画面
-    constructor(newGame) {
+    constructor() {
         super(new Child());
         this.child.drawlayer = 'ui';
         this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
         this.child.add(new Label(text.gameover, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
         this.menu.isEnableCancel = false;
-        this.menu.add(text.continue, function* () { newGame(); });
-        this.menu.add(text.returntitle, function* () { game.popScene(); });
+        this.menu.add(text.continue);
+        this.menu.add(text.returntitle);
     }
     *stateDefault() {
         game.pushScene(this);
-        yield* this.menu.stateSelect();
+        const result = yield* this.menu.stateSelect();
         game.popScene();
+        return result;
     }
 }
 class SceneHighscore extends Mono {//ハイスコア画面
