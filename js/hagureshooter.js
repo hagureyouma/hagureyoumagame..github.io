@@ -1863,9 +1863,10 @@ class SceneHighscore extends Mono {//ハイスコア画面
 }
 class SceneCredit extends Mono {//クレジット画面
     constructor() {
-        super(new Child());
+        super(new State(), new Child());
         this.child.drawlayer = 'ui';
         this.child.add(new Label(text.credit, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.state.start
     }
     *stateDefault() {
         game.pushScene(this);
@@ -1875,6 +1876,11 @@ class SceneCredit extends Mono {//クレジット画面
         }
         game.popScene();
         return;
+    }
+    *stateScroll() {
+        while (true) {
+            yield waitForTime(1);
+        }
     }
 }
 export const cfg = {//ゲームの設定
@@ -1906,7 +1912,8 @@ let text = {//テキスト
     start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
     pause: 'ポーズ', resume: 'ゲームを続ける', restart: '最初からやり直す', returntitle: 'タイトルに戻る',
     stageclear: 'ステージ　クリアー', total: '合計', stage: 'ステージ', time: 'タイム', point: 'スコア', ko: '撃破数',
-    gameover: 'ゲームオーバー', continue: 'コンティニュー'
+    gameover: 'ゲームオーバー', continue: 'コンティニュー',
+    cast: 'キャスト',
 }
 const EMOJI = {//Font Awesomeの絵文字のUnicode
     GHOST: 'f6e2',
