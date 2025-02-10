@@ -346,17 +346,23 @@ class State {//ステートコンポーネント
     reset() {
         this.generators.clear();
     }
-    isEnable = (id) => this.generators.get(id) !== undefined;
-    start(state, id) {
-        const newid = id ?? Util.uniqueId();
-        this.generators.set(newid, state);
-        return newid;
+    isEnable(id) {
+        return this.generators.has(id);
     }
-    startAndWait = (state, id) => this.wait(this.start(state, id));
-    stop = (id) => this.generators.delete(id);
+    start(state, id = Util.uniqueId()) {
+        this.generators.set(id, state);
+        return id;
+    }
+    startAndWait(state, id) {
+        return this.wait(this.start(state, id));
+    }
+    stop(id) {
+        this.generators.delete(id);
+    }
     stopAll(...skipids) {
+        const skipset = new Set(skipids);
         for (const id of this.generators.keys()) {
-            if (skipids.includes(id)) continue;
+            if (skipset.has(id)) continue;
             this.generators.delete(id);
         }
     }
@@ -370,13 +376,11 @@ class State {//ステートコンポーネント
             }
         }
     }
-    wait = (...ids) => waitForFrag(() => {
-        let result = true;
-        for (const id of ids) {
-            result &= !this.isEnable(id);
-        }
-        return result;
-    });
+    wait(...ids) {
+        return waitForFrag(() => {
+            return ids.every(id => !this.isEnable(id));
+        });
+    }
 }
 function* waitForTime(time) {//タイマー
     time -= game.delta;
@@ -410,10 +414,7 @@ class Pos {//座標コンポーネント
         this.parent = undefined;
     }
     set(x, y, width, height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
+        Object.assign(this, { x, y, width, height });
         return this;
     }
     get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0) }
@@ -448,33 +449,40 @@ class Move {//動作コンポーネント
         this.ease.set(speedChangeTime, easing, false, false, minSpeedVias);
         this.ease.endToDelta = true;
     }
-    relative(x, y, speed, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    _setRelativeParams(x, y, speedOrTime, isTimebBased, options) {
+        const { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = options;
         this.vx = x;
         this.vy = y;
-        return this.ease.set(Util.distanse(x, y) / speed, easing, isLoop, isfirstRand, min,);
+        const distance = Util.distanse(x, y);
+        if (isTimebBased) {
+            return this.ease.set(speedOrTime, easing, isLoop, isfirstRand, min);
+        } else {
+            return this.ease.set(distance / speedOrTime, easing, isLoop, isfirstRand, min);
+        }
     }
-    relativeForTime(x, y, time, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
-        this.vx = x;
-        this.vy = y;
-        return this.ease.set(time, easing, isLoop, isfirstRand, min,);
+    relative(x, y, speed, options = {}) {
+        return this._setRelativeParams(x, y, speed, false, options);
     }
-    relativeDeg(deg, distance, speed, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
-        this.vx = Util.degToX(deg) * distance;
-        this.vy = Util.degToY(deg) * distance;
-        return this.ease.set(Util.distanse(x, y) / speed, easing, isLoop, isfirstRand, min,);
+    relativeForTime(x, y, time, options = {}) {
+        return this._setRelativeParams(x, y, time, true, options);
     }
-    relativeDegForTime(deg, distance, time, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
-        this.vx = Util.degToX(deg) * distance;
-        this.vy = Util.degToY(deg) * distance;
-        return this.ease.set(time, easing, isLoop, isfirstRand, min,);
+    relativeDeg(deg, distance, speed, options = {}) {
+        const x = Util.degToX(deg) * distance;
+        const y = Util.degToY(deg) * distance;
+        return this._setRelativeParams(x, y, speed, false, options);
     }
-    to(x, y, speed, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    relativeDegForTime(deg, distance, time, options = {}) {
+        const x = Util.degToX(deg) * distance;
+        const y = Util.degToY(deg) * distance;
+        return this._setRelativeParams(x, y, time, true, options);
+    }
+    to(x, y, speed, options = {}) {
         const pos = this.owner.pos;
-        return this.relative(x - pos.x, y - pos.y, speed, { easing, isLoop, isfirstRand, min });
+        return this.relative(x - pos.x, y - pos.y, speed, options);
     }
-    toForTime(x, y, time, { easing = Ease.liner, isLoop = false, isfirstRand = false, min = 0 } = {}) {
+    toForTime(x, y, time, options = {}) {
         const pos = this.owner.pos;
-        return this.relativeForTime(x - pos.x, y - pos.y, time, { easing, isLoop, isfirstRand, min });
+        return this.relativeForTime(x - pos.x, y - pos.y, time, options);
     }
     setRevo(speedDeg) {
         this.revo = speedDeg;
@@ -603,26 +611,32 @@ class Child {//コンテナコンポーネント
         this.drawlayer = '';
     }
     reset() { }
-    addCreator = (name, func) => this.creator[name] = func;
+    addCreator(name, func) {
+        this.creator[name] = func;
+    }
     pool(name) {//オブジェクトプール（オブジェクトを再利用する）
         let obj;
         if (name in this.reserves === false) this.reserves[name] = [];
         if (this.reserves[name].length === 0) {
-            obj = this.creator[name]();
-            obj.childIndex = this.objs.length;
-            obj.remove = () => {
-                if (!obj.isExist) return;
-                obj.isExist = false;
-                obj.resetMix();
-                this.reserves[name].push(obj.childIndex);
-                this.liveCount--;
-            }
-            this.objs.push(obj);
+            obj = this.createObject(name);
         } else {
             obj = this.objs[this.reserves[name].pop()];
         }
         obj.isExist = true;
         this.liveCount++;
+        return obj;
+    }
+    createObject(name) {
+        const obj = this.creator[name]();
+        obj.childIndex = this.objs.length;
+        obj.remove = () => {
+            if (!obj.isExist) return;
+            obj.isExist = false;
+            obj.resetMix();
+            this.reserves[name].push(obj.childIndex);
+            this.liveCount--;
+        }
+        this.objs.push(obj);
         return obj;
     }
     add(obj) {//プールしないオブジェクト用　removeすると削除リストに登録されて、フレームの終わりにまとめて削除される
@@ -649,8 +663,7 @@ class Child {//コンテナコンポーネント
     }
     each(func) {
         for (const obj of this.objs) {
-            if (!obj.isExist) continue;
-            func(obj);
+            if (obj.isExist) func(obj);
         }
     }
 }
@@ -1250,15 +1263,14 @@ class Player extends Mono {//プレイヤーキャラ
     }
 }
 class Baddies extends Mono {//敵キャラのコンテナ
-    static form = { within: 'within', circle: 'circle', v: 'v', delta: 'delta', tri: 'tri', inverttri: 'inverttri', trail: 'trail', abrest: 'abrest', topsingle: 'topsingle', left: 'left', right: 'right', randomtop: 'randomtop', randomside: 'randomside' };
-    static {
-        Object.freeze(Baddies.form);
-    }
+    static form = Object.freeze({ within: 'within', circle: 'circle', v: 'v', delta: 'delta', tri: 'tri', inverttri: 'inverttri', trail: 'trail', abrest: 'abrest', topsingle: 'topsingle', left: 'left', right: 'right', randomtop: 'randomtop', randomside: 'randomside' });
     constructor() {
         super(new Child());
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Baddie());
     }
-    spawn = (x, y, name, pattern, bullets, scene, parent) => this.child.pool(name).set(x, y, name, pattern, bullets, scene, parent);
+    spawn(x, y, name, pattern, bullets, scene, parent) {
+        this.child.pool(name).set(x, y, name, pattern, bullets, scene, parent);
+    }
     *formation(type, x, y, n, s, name, pattern, bullets, scene, parent) {
         //xまたはyは-1にするとランダムになるよ
         const poss = [];
@@ -1865,8 +1877,7 @@ class SceneCredit extends Mono {//クレジット画面
     constructor() {
         super(new State(), new Child());
         this.child.drawlayer = 'ui';
-        this.child.add(new Label(text.credit, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.state.start
+        this.state.start(this.stateScroll());
     }
     *stateDefault() {
         game.pushScene(this);
@@ -1878,7 +1889,11 @@ class SceneCredit extends Mono {//クレジット画面
         return;
     }
     *stateScroll() {
+        const scrolltime = 3;
         while (true) {
+            const header = new Label(text.credit, game.width * 0.5, game.height + (game.height * 0.25), { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 });
+            header.move.toForTime(game.width * 0.5, -(game.height * 0.25), 3);
+            this.child.add(header);
             yield waitForTime(1);
         }
     }
@@ -1923,7 +1938,8 @@ const EMOJI = {//Font Awesomeの絵文字のUnicode
     TREE: 'f1bb',
     DOVE: 'f4ba',
     POO: 'f2fe',
-    CROWN: 'f521'
+    CROWN: 'f521',
+    FEATHER: 'f52d',
 }
 Object.freeze(EMOJI);
 class CharacterData {//キャラデータ
