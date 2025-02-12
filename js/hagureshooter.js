@@ -313,16 +313,20 @@ class Mono {//ゲームオブジェクト
             }
         }
     }
-    addMix(mix) {
+    addMix(mix, isBefore = false) {
         const name = mix.constructor.name.toLowerCase();
         if (name in this) return;
         mix.owner = this;
         this[name] = mix;
-        this.mixs.push(mix);
+        if (isBefore) {
+            this.mixs.unshift(mix);
+        } else {
+            this.mixs.push(mix);
+        }
         return this;
     }
     resetMix() {
-        for (const mix of this.mixs) mix.reset();
+        for (const mix of this.mixs) mix.reset?.();
     }
     baseUpdate() {
         if (!this.isExist || !this.isActive) return;
@@ -501,6 +505,24 @@ class Move {//動作コンポーネント
     get isActive() { return this.ease.isActive; }
     get percentage() { return this.ease.percentage; }
 }
+class OutOfScreenToRemove {//画面外に出ると削除コンポーネント
+    constructor() {
+        return this;
+    }
+    update() {
+        if (game.isOutOfScreen(this.owner.pos.rect)) this.owner.remove();        
+    }
+}
+class OutOfRangeToRemove {//範囲外に出ると削除コンポーネント
+    constructor() {
+        return this;
+    }
+    update() {
+        if (game.isOutOfRange(this.owner.pos.rect)){ this.owner.remove();
+            console.log('outofrangetoremove');
+        }
+    }
+}
 class Ease {//イージング
     static liner = (t) => t;
     static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
@@ -616,7 +638,7 @@ class Child {//コンテナコンポーネント
     }
     pool(name) {//オブジェクトプール（オブジェクトを再利用する）
         let obj;
-        if (name in this.reserves === false) this.reserves[name] = [];
+        if (!(name in this.reserves)) this.reserves[name] = [];
         if (this.reserves[name].length === 0) {
             obj = this.createObject(name);
         } else {
@@ -912,243 +934,6 @@ class Watch extends Mono {//デバッグ用変数表示
     }
 }
 //ここからゲーム固有のクラス
-class SceneTitle extends Mono {//タイトル画面
-    constructor() {
-        super(new Child());
-        //タイトル
-        const titleY = game.height * 0.25;
-        this.child.add(new Label(text.title, game.width * 0.5, titleY, { size: cfg.fontSize.large, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.child.add(new Label(text.title2, game.width * 0.5, titleY + cfg.fontSize.large * 1.5, { size: cfg.fontSize.large, align: 1, valign: 1 }));
-        //ボタンを押してね
-        this.child.add(this.presskey = new Label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
-        //メニュー
-        this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
-        this.titleMenu.add(text.start);
-        this.titleMenu.add(text.highscore);
-        this.titleMenu.add(text.credit);
-        this.titleMenu.isEnableCancel = true;
-        this.titleMenu.isExist = false;
-        //操作方法
-        // this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
-        // this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { align: 1, valign: 1 }));        
-        game.setState(this.statePressKey());
-    }
-    *statePressKey() {
-        this.presskey.color.blink(0.5);
-        while (true) {
-            yield undefined;
-            if (!game.input.isPress('z')) continue;
-            this.presskey.isExist = false;
-            yield* this.stateTitleMenu();
-            this.presskey.isExist = true;
-            this.presskey.color.blink(0.5);
-        }
-    }
-    *stateTitleMenu() {
-        this.titleMenu.isExist = true;
-        while (true) {
-            const result = yield* this.titleMenu.stateSelect();
-            if (result === text.cancel) {
-                this.titleMenu.isExist = false;
-                return;
-            }
-            this.isExist = false;
-            if (result === text.start) yield* new ScenePlay().stateDefault();
-            if (result === text.highscore) yield* new SceneHighscore().stateDefault();
-            if (result === text.credit) yield* new SceneCredit().stateDefault();
-            this.isExist = true;
-        }
-    }
-}
-class ScenePlay extends Mono {//プレイ画面
-    constructor() {
-        super(new State(), new Child());
-        this.elaps = 0;
-        //キャラ
-        this.child.add(this.playerside = new Mono(new Child()));
-        this.child.add(this.baddies = new Baddies());
-        //弾
-        this.child.add(this.playerbullets = new BulletBox());
-        this.child.add(this.baddiesbullets = new BulletBox());
-        //パーティクル
-        this.child.add(this.effect = new Tsubu());
-        this.effect.child.drawlayer = 'effect';
-        //UI
-        this.child.add(this.ui = new Mono(new Child()));
-        this.ui.child.drawlayer = 'ui';
-        this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
-        this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2));
-        this.fpsView.pos.align = 2;
-        //ボスのHPゲージ
-        const gauge = this.bossHPgauge = new Gauge();
-        gauge.pos.set(game.width * 0.5, 30, game.width * 0.9, 10);
-        gauge.pos.align = 1;
-        gauge.color = cfg.theme.text;
-        //テロップ
-        this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.telop.isExist = false;
-
-        this.child.add(this.debug = new Watch());
-        this.debug.pos.y = 40;
-        //this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
-        // this.textScore.pos.x = 2;
-        // this.textScore.pos.y = 48;
-        this.stateStageId;
-        // this.fiber.add(this.stageRunner(con.stages[0]));      
-        this.newGame();
-    }
-    get isClear() { return !this.state.isEnable(this.stateStageId); }
-    get isFailure() { return this.player.unit.isDefeat }
-    *showTelop(text, time, blink = 0) {
-        this.telop.moji.set(text);
-        this.telop.color.blink(blink);
-        this.telop.isExist = true;
-        yield* waitForTime(time);
-        this.telop.isExist = false;
-    }
-    update() {
-        this.player.maneuver();//プレイヤーの入力受付を優先するのでここで受け付ける
-    }
-    postUpdate() {
-        const _bulletHitcheck = (bullet, targets) => {
-            if ((bullet.bullet.removeOffscreen && game.isOutOfScreen(bullet.pos.rect)) || game.isOutOfRange(bullet.pos.rect)) {
-                bullet.remove();
-                return;
-            }
-            targets.child.each((target) => {
-                if (!bullet.collision.hit(target)) return;
-                target.color.flash('crimson');
-                shared.playdata.total.point += bullet.bullet.point;
-                bullet.remove();
-                target.unit.isBanish(bullet.bullet.damage);
-            });
-        }
-        this.baddies.child.each((baddie) => {//画面外または範囲外に出た敵キャラを消す
-            if (baddie.unit.removeOffscreen && game.isOutOfScreen(baddie.pos.rect)) {
-                baddie.remove();
-                return;
-            }
-            if (game.isOutOfRange(baddie.pos.rect)) {
-                baddie.remove();
-            }
-        });
-        //弾の当たり判定
-        this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
-        this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
-        //経過時間
-        this.elaps += game.delta;
-        shared.playdata.total.time += game.delta;
-    }
-    * stateDefault() {
-        game.pushScene(this);
-        while (true) {
-            yield undefined;
-            if (this.isClear) {//ステージクリアした
-                yield* this.showTelop(text.stageclear, 2);
-                shared.playdata.total.stage++;
-                yield* new SceneClear().stateDefault();
-                shared.playdata.backup = new scoreData(shared.playdata.total);
-                this.resetStage();
-                continue;
-            }
-            if (this.isFailure) {//負けた
-                yield* this.showTelop(text.gameover, 2);
-                if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
-                switch (yield* new SceneGameOver(this.newGame).stateDefault()) {
-                    case text.continue:
-                        this.continueGame();
-                        break;
-                    case text.returntitle:
-                        game.popScene();
-                        return;
-                }
-                continue;
-            }
-            if (game.input.isPress('x')) {//ポーズメニューを開く
-                this.isActive = false;
-                switch (yield* new ScenePause().stateDefault()) {
-                    case text.restart:
-                        this.continueGame();
-                        break;
-                    case text.returntitle:
-                        game.popScene();
-                        return;
-                }
-                this.isActive = true;
-                continue;
-            }
-        }
-    }
-    * stageDefault() {
-        const appears = ['crow', 'dove', 'bigcrow'];
-        const bossName = 'greatcrow';
-        const phaseLength = 30;
-        this.elaps = 0;
-        //道中
-        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.elaps > phaseLength) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     const baddieName = appears[Util.rand(appears.length - 1)];
-        //     const data = datas.baddies[baddieName];
-        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
-        //     const spawnMax = Math.floor(game.width / data.size) - 2;
-        //     const spawnCount = Util.rand(spawnMax);
-        //     this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
-        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        // }
-        if (this.isFailure) return;
-        yield* this.showTelop('WARNING!', 2, 0.25);
-        if (this.isFailure) return;
-        {//ステージボス登場
-            const data = datas.baddies[bossName];
-            const formation = data.forms[0];
-            const [boss] = yield* this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
-            let isbossDefeat = false;
-            boss.unit.onDefeat = () => {
-                isbossDefeat = true;
-            }
-            this.bossHPgauge.isExist = true;
-            this.bossHPgauge.max = boss.unit.maxHp;
-            this.bossHPgauge.watch = () => boss.unit.hp;
-            this.ui.child.add(this.bossHPgauge);
-            yield* waitForFrag(() => {
-                return isbossDefeat;
-            });
-            this.bossHPgauge.remove();
-        }
-    }
-    newGame() {
-        shared.playdata.backup = new scoreData();
-        shared.playdata.total = new scoreData();
-        this.resetStage();
-    }
-    continueGame() {
-        shared.playdata.total = new scoreData(shared.playdata.backup);
-        this.resetStage();
-    }
-    resetStage() {
-        this.player?.remove();
-        this.playerside.child.add(this.player = new Player(this.playerbullets, this));
-        //this.player.unit.invincible = true;//無敵
-        this.playerbullets.child.removeAll();
-        this.baddies.child.removeAll();
-        this.baddiesbullets.child.removeAll();
-        this.effect.child.removeAll();
-        this.state.reset();
-        this.stateStageId = this.state.start(this.stageDefault(), this.stateStageId);
-        game.layers.get('effect').clearBlur();
-        this.telop.isExist = false;
-        this.bossHPgauge.remove?.();
-    }
-    isNewRecord() {
-        shared.highscores.push(shared.playdata.total);
-        shared.highscores.sort((a, b) => b.point - a.point);
-        if (shared.highscores.length < datas.game.highscoreListMax) return true;
-        return shared.playdata.total != shared.highscores.pop();
-    }
-}
 class Unit {//キャラ
     constructor() {
         this.reset();
@@ -1156,7 +941,7 @@ class Unit {//キャラ
     }
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
-        this.removeOffscreen = this.invincible = this.firing = false;//画面外に出ると消える、無敵、射撃中
+        this.invincible = this.firing = false;//画面外に出ると消える、無敵、射撃中
         this.data = this.scene = this.onDefeat = undefined;
     }
     set(data, scene) {
@@ -1166,7 +951,8 @@ class Unit {//キャラ
         if (!data) return;
         this.data = data;
         this.hp = this.maxHp = data.hp;
-        this.point = data.point;
+        this.point = data.point;        
+        this.owner.addMix(data.isOutOfScreenToRemove? new OutOfScreenToRemove(): new OutOfRangeToRemove(),true);
     }
     _createRequiedState() {
         const owner = this.owner;
@@ -1269,7 +1055,7 @@ class Baddies extends Mono {//敵キャラのコンテナ
         for (const data of Object.values(datas.baddies)) this.child.addCreator(data.name, () => new Baddie());
     }
     spawn(x, y, name, pattern, bullets, scene, parent) {
-        this.child.pool(name).set(x, y, name, pattern, bullets, scene, parent);
+        return this.child.pool(name).set(x, y, name, pattern, bullets, scene, parent);
     }
     *formation(type, x, y, n, s, name, pattern, bullets, scene, parent) {
         //xまたはyは-1にするとランダムになるよ
@@ -1734,7 +1520,6 @@ class Bullet {//弾コンポーネント
     set(damage, point) {
         this.damage = damage;
         this.point = point;
-        this.removeOffscreen = true;
     }
 }
 class BulletBox extends Mono {//弾
@@ -1745,6 +1530,7 @@ class BulletBox extends Mono {//弾
     }
     firing(x, y, vx, vy, firstSpeed, accelTime, color, damage, point, removeOffscreen) {
         const bullet = this.child.pool('bullet');
+        bullet.addMix(removeOffscreen?new OutOfScreenToRemove():new OutOfRangeToRemove(),true);
         bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
         bullet.pos.valign = 1;
@@ -1754,7 +1540,6 @@ class BulletBox extends Mono {//弾
         bullet.brush.circle();
         bullet.brush.color = color;
         bullet.bullet.set(damage, point);
-        bullet.bullet.removeOffscreen = removeOffscreen;
         return bullet;
     }
     mulitWay(x, y, { deg = 270, space = 30, count = 3, speed = 150, firstSpeed = 0, accelTime = 0, color = 'red', aim = undefined, guided = undefined, guidedSpeed = 0, damage = 1, point = 0, removeOffscreen = true } = {}) {
@@ -1775,6 +1560,230 @@ class BulletBox extends Mono {//弾
             result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, firstSpeed, accelTime, color, damage, point, removeOffscreen);
         }
         return result;
+    }
+}
+class SceneTitle extends Mono {//タイトル画面
+    constructor() {
+        super(new Child());
+        //タイトル
+        const titleY = game.height * 0.25;
+        this.child.add(new Label(text.title, game.width * 0.5, titleY, { size: cfg.fontSize.large, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.add(new Label(text.title2, game.width * 0.5, titleY + cfg.fontSize.large * 1.5, { size: cfg.fontSize.large, align: 1, valign: 1 }));
+        //ボタンを押してね
+        this.child.add(this.presskey = new Label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
+        //メニュー
+        this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
+        this.titleMenu.add(text.start);
+        this.titleMenu.add(text.highscore);
+        this.titleMenu.add(text.credit);
+        this.titleMenu.isEnableCancel = true;
+        this.titleMenu.isExist = false;
+        //操作方法
+        // this.child.add(new label(text.explanation1, game.width * 0.5, game.height - (TEXT_SIZE.NORMAL * 2.5), { align: 1, valign: 1 }));
+        // this.child.add(new label(text.explanation2, game.width * 0.5, game.height - TEXT_SIZE.NORMAL, { align: 1, valign: 1 }));        
+        game.setState(this.statePressKey());
+    }
+    *statePressKey() {
+        this.presskey.color.blink(0.5);
+        while (true) {
+            yield undefined;
+            if (!game.input.isPress('z')) continue;
+            this.presskey.isExist = false;
+            yield* this.stateTitleMenu();
+            this.presskey.isExist = true;
+            this.presskey.color.blink(0.5);
+        }
+    }
+    *stateTitleMenu() {
+        this.titleMenu.isExist = true;
+        while (true) {
+            const result = yield* this.titleMenu.stateSelect();
+            if (result === text.cancel) {
+                this.titleMenu.isExist = false;
+                return;
+            }
+            this.isExist = false;
+            if (result === text.start) yield* new ScenePlay().stateDefault();
+            if (result === text.highscore) yield* new SceneHighscore().stateDefault();
+            if (result === text.credit) yield* new SceneCredit().stateDefault();
+            this.isExist = true;
+        }
+    }
+}
+class ScenePlay extends Mono {//プレイ画面
+    constructor() {
+        super(new State(), new Child());
+        this.elaps = 0;
+        //キャラ
+        this.child.add(this.playerside = new Mono(new Child()));
+        this.child.add(this.baddies = new Baddies());
+        //弾
+        this.child.add(this.playerbullets = new BulletBox());
+        this.child.add(this.baddiesbullets = new BulletBox());
+        //パーティクル
+        this.child.add(this.effect = new Tsubu());
+        this.effect.child.drawlayer = 'effect';
+        //UI
+        this.child.add(this.ui = new Mono(new Child()));
+        this.ui.child.drawlayer = 'ui';
+        this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
+        this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2));
+        this.fpsView.pos.align = 2;
+        //ボスのHPゲージ
+        const gauge = this.bossHPgauge = new Gauge();
+        gauge.pos.set(game.width * 0.5, 30, game.width * 0.9, 10);
+        gauge.pos.align = 1;
+        gauge.color = cfg.theme.text;
+        //テロップ
+        this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.telop.isExist = false;
+
+        this.child.add(this.debug = new Watch());
+        this.debug.pos.y = 40;
+        //this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
+        // this.textScore.pos.x = 2;
+        // this.textScore.pos.y = 48;
+        this.stateStageId;
+        // this.fiber.add(this.stageRunner(con.stages[0]));      
+        this.newGame();
+    }
+    get isClear() { return !this.state.isEnable(this.stateStageId); }
+    get isFailure() { return this.player.unit.isDefeat }
+    *showTelop(text, time, blink = 0) {
+        this.telop.moji.set(text);
+        this.telop.color.blink(blink);
+        this.telop.isExist = true;
+        yield* waitForTime(time);
+        this.telop.isExist = false;
+    }
+    update() {
+        this.player.maneuver();//プレイヤーの入力受付を優先するのでここで受け付ける
+    }
+    postUpdate() {
+        const _bulletHitcheck = (bullet, targets) => {
+            targets.child.each((target) => {
+                if (!bullet.collision.hit(target)) return;
+                target.color.flash('crimson');
+                shared.playdata.total.point += bullet.bullet.point;
+                bullet.remove();
+                target.unit.isBanish(bullet.bullet.damage);
+            });
+        }
+        //弾の当たり判定
+        this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
+        this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
+        //経過時間
+        this.elaps += game.delta;
+        shared.playdata.total.time += game.delta;
+    }
+    * stateDefault() {
+        game.pushScene(this);
+        while (true) {
+            yield undefined;
+            if (this.isClear) {//ステージクリアした
+                yield* this.showTelop(text.stageclear, 2);
+                shared.playdata.total.stage++;
+                yield* new SceneClear().stateDefault();
+                shared.playdata.backup = new scoreData(shared.playdata.total);
+                this.resetStage();
+                continue;
+            }
+            if (this.isFailure) {//負けた
+                yield* this.showTelop(text.gameover, 2);
+                if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
+                switch (yield* new SceneGameOver(this.newGame).stateDefault()) {
+                    case text.continue:
+                        this.continueGame();
+                        break;
+                    case text.returntitle:
+                        game.popScene();
+                        return;
+                }
+                continue;
+            }
+            if (game.input.isPress('x')) {//ポーズメニューを開く
+                this.isActive = false;
+                switch (yield* new ScenePause().stateDefault()) {
+                    case text.restart:
+                        this.continueGame();
+                        break;
+                    case text.returntitle:
+                        game.popScene();
+                        return;
+                }
+                this.isActive = true;
+                continue;
+            }
+        }
+    }
+    * stageDefault() {
+        const appears = ['crow', 'dove', 'bigcrow'];
+        const bossName = 'greatcrow';
+        const phaseLength = 30;
+        this.elaps = 0;
+        //道中
+        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+            if (this.elaps > phaseLength) {
+                yield undefined;
+                continue;
+            }
+            const baddieName = appears[Util.rand(appears.length - 1)];
+            const data = datas.baddies[baddieName];
+            const formation = data.forms[Util.rand(data.forms.length - 1)];
+            const spawnMax = Math.floor(game.width / data.size) - 2;
+            const spawnCount = Util.rand(spawnMax);
+            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
+            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        }
+        if (this.isFailure) return;
+        yield* this.showTelop('WARNING!', 2, 0.25);
+        if (this.isFailure) return;
+        {//ステージボス登場
+            const data = datas.baddies[bossName];
+            const formation = data.forms[0];
+            const [boss] = yield* this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
+            let isbossDefeat = false;
+            boss.unit.onDefeat = () => {
+                isbossDefeat = true;
+            }
+            this.bossHPgauge.isExist = true;
+            this.bossHPgauge.max = boss.unit.maxHp;
+            this.bossHPgauge.watch = () => boss.unit.hp;
+            this.ui.child.add(this.bossHPgauge);
+            yield* waitForFrag(() => {
+                return isbossDefeat;
+            });
+            this.bossHPgauge.remove();
+        }
+    }
+    newGame() {
+        shared.playdata.backup = new scoreData();
+        shared.playdata.total = new scoreData();
+        this.resetStage();
+    }
+    continueGame() {
+        shared.playdata.total = new scoreData(shared.playdata.backup);
+        this.resetStage();
+    }
+    resetStage() {
+        this.player?.remove();
+        this.playerside.child.add(this.player = new Player(this.playerbullets, this));
+        //this.player.unit.invincible = true;//無敵
+        this.playerbullets.child.removeAll();
+        this.baddies.child.removeAll();
+        this.baddiesbullets.child.removeAll();
+        this.effect.child.removeAll();
+        this.state.reset();
+        this.stateStageId = this.state.start(this.stageDefault(), this.stateStageId);
+        game.layers.get('effect').clearBlur();
+        this.telop.isExist = false;
+        this.bossHPgauge.remove?.();
+    }
+    isNewRecord() {
+        shared.highscores.push(shared.playdata.total);
+        shared.highscores.sort((a, b) => b.point - a.point);
+        if (shared.highscores.length < datas.game.highscoreListMax) return true;
+        return shared.playdata.total != shared.highscores.pop();
     }
 }
 class ScenePause extends Mono {//中断メニュー画面
@@ -1930,7 +1939,7 @@ let text = {//テキスト
     gameover: 'ゲームオーバー', continue: 'コンティニュー',
     cast: 'キャスト',
 }
-const EMOJI = {//Font Awesomeの絵文字のUnicode
+const EMOJI = Object.freeze({//Font Awesomeの絵文字のUnicode
     GHOST: 'f6e2',
     CAT: 'f6be',
     CROW: 'f520',
@@ -1940,10 +1949,10 @@ const EMOJI = {//Font Awesomeの絵文字のUnicode
     POO: 'f2fe',
     CROWN: 'f521',
     FEATHER: 'f52d',
-}
-Object.freeze(EMOJI);
+});
 class CharacterData {//キャラデータ
-    constructor(name, char, color, size, hp, point, routine, forms) {
+    constructor(name, char, color, size, hp, point, routine, forms,options={}) {
+        const {isOutOfScreenToRemove=false,}=options;
         this.name = name;
         this.char = char;
         this.color = color;
@@ -1952,6 +1961,7 @@ class CharacterData {//キャラデータ
         this.point = point;
         this.routine = routine;
         this.forms = forms;
+        this.isOutOfScreenToRemove = isOutOfScreenToRemove;
     }
 }
 export const datas = {//ゲームデータ
