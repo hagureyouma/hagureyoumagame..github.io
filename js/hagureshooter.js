@@ -744,17 +744,19 @@ class Moji {//文字表示コンポーネント
         this.size = cfg.fontSize.normal;
         this.font = cfg.font.default;
         this.baseLine = 'top';
+        this.angle=0;
     }
-    set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign } = {}) {
+    set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign,angle=this.angle } = {}) {
         this.text = text;
         this.weight = weight;
         this.size = size;
         this.font = font;
         this.owner.color.value = color;
+        this.angle=angle;
         const ctx = game.layers.get('main').getContext();
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
-        const tm = ctx.measureText(this.getText);
+        const tm = ctx.measureText(this.getText());
         const pos = this.owner.pos;
         pos.set(x, y, tm.width, Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent));
         pos.align = align;
@@ -762,10 +764,14 @@ class Moji {//文字表示コンポーネント
     }
     get getText() { return typeof this.text === 'function' ? this.text() : this.text };
     draw(ctx) {
+        ctx.save();
+        ctx.translate(this.owner.pos.linkX, this.owner.pos.linkY);
+        ctx.rotate(this.angle*Util.radian);
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
         ctx.fillStyle = this.owner.color.value;
         ctx.fillText(this.getText, this.owner.pos.left, this.owner.pos.top);
+        ctx.restore();
     }
 }
 class Label extends Mono {//文字表示
@@ -941,7 +947,7 @@ class Unit {//キャラ
     }
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
-        this.invincible = this.firing = false;//画面外に出ると消える、無敵、射撃中
+        this.invincible = this.firing = false;//無敵、射撃中
         this.data = this.scene = this.onDefeat = undefined;
     }
     set(data, scene) {
