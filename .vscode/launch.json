@@ -17,13 +17,8 @@
             "request": "launch",
             "type": "msedge",
             "url": "http://127.0.0.1:3000/shooter.html",
+            "sourceMaps": true,
             "webRoot": "${workspaceFolder}"
-        },
-        {
-            "type": "chrome",
-            "name": "http://127.0.0.1:3000/index.html",
-            "request": "launch",
-            "url": "http://127.0.0.1:3000/index.html"
         }
     ]
 }

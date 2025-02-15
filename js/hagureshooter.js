@@ -413,6 +413,7 @@ class Pos {//座標コンポーネント
     }
     reset() {
         this.set(0, 0, 0, 0);
+        this.angle = 0;
         this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
         this.parent = undefined;
@@ -510,7 +511,7 @@ class OutOfScreenToRemove {//画面外に出ると削除コンポーネント
         return this;
     }
     update() {
-        if (game.isOutOfScreen(this.owner.pos.rect)) this.owner.remove();        
+        if (game.isOutOfScreen(this.owner.pos.rect)) this.owner.remove();
     }
 }
 class OutOfRangeToRemove {//範囲外に出ると削除コンポーネント
@@ -518,7 +519,8 @@ class OutOfRangeToRemove {//範囲外に出ると削除コンポーネント
         return this;
     }
     update() {
-        if (game.isOutOfRange(this.owner.pos.rect)){ this.owner.remove();
+        if (game.isOutOfRange(this.owner.pos.rect)) {
+            this.owner.remove();
             console.log('outofrangetoremove');
         }
     }
@@ -695,10 +697,12 @@ class Color {//色コンポーネント
     }
     reset() {
         this.value = this.baseColor = cfg.theme.text;
+        this.alpha = this.baseAlpha = 1;
         this.func = undefined;
     }
     restore() {
         this.value = this.baseColor;
+        this.alpha = this.baseAlpha;
         this.func = undefined;
     }
     update = () => this.func?.();
@@ -721,16 +725,20 @@ class Color {//色コンポーネント
             return;
         }
         if (this.func) this.restore();
-        this.baseColor = this.value;
+        this.basealpha = this.alpha;
         let timer = interval;
         this.func = () => {
             if (timer <= 0) {
                 timer = interval;
-                this.value = this.value === this.baseColor ? '#00000000' : this.baseColor;
+                this.alpha = this.alpha === 1 ? 0 : 1;
                 return;
             }
             timer -= game.delta;
         }
+    }
+    applyContext(ctx) {
+        ctx.fillStyle = this.value;
+        ctx.globalAlpha = this.alpha;
     }
 }
 class Moji {//文字表示コンポーネント
@@ -744,32 +752,30 @@ class Moji {//文字表示コンポーネント
         this.size = cfg.fontSize.normal;
         this.font = cfg.font.default;
         this.baseLine = 'top';
-        this.angle=0;
     }
-    set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign,angle=this.angle } = {}) {
+    set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = {}) {
         this.text = text;
         this.weight = weight;
         this.size = size;
         this.font = font;
         this.owner.color.value = color;
-        this.angle=angle;
         const ctx = game.layers.get('main').getContext();
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
-        const tm = ctx.measureText(this.getText());
+        const tm = ctx.measureText(this.getText);
         const pos = this.owner.pos;
         pos.set(x, y, tm.width, Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent));
         pos.align = align;
         pos.valign = valign;
+        pos.angle = angle;
     }
     get getText() { return typeof this.text === 'function' ? this.text() : this.text };
     draw(ctx) {
         ctx.save();
-        ctx.translate(this.owner.pos.linkX, this.owner.pos.linkY);
-        ctx.rotate(this.angle*Util.radian);
+        ctx.rotate(this.owner.pos.angle * Util.radian);
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
-        ctx.fillStyle = this.owner.color.value;
+        this.owner.color.applyContext(ctx);
         ctx.fillText(this.getText, this.owner.pos.left, this.owner.pos.top);
         ctx.restore();
     }
@@ -784,25 +790,28 @@ class Brush {//図形描画コンポーネント
     static rad = Math.PI * 2;
     constructor() {
         this.reset();
-        return [new Pos(), this];
+        return [new Pos(), new Color(), this];
     }
     reset() {
         this.rect();
-        this.color = 'white';
-        this.alpha = 1;
     }
-    rect = () => this.drawer = (ctx, pos) => ctx.fillRect(pos.left, pos.top, pos.width, pos.height);
-    circle = () => this.drawer = (ctx, pos) => {
-        ctx.beginPath();
-        ctx.arc(pos.linkX, pos.linkY, pos.width * 0.5, 0, Brush.rad);
-        ctx.fill();
+    rect() {
+        this.drawer = (ctx, pos) => {
+            ctx.fillRect(pos.left, pos.top, pos.width, pos.height);
+        }
+    }
+    circle() {
+        this.drawer = (ctx, pos) => {
+            ctx.beginPath();
+            ctx.arc(pos.linkX, pos.linkY, pos.width * 0.5, 0, Brush.rad);
+            ctx.fill();
+        }
     }
     draw(ctx) {
-        const beforeAlpha = ctx.globalAlpha;
-        ctx.fillStyle = this.color;
-        ctx.globalAlpha = this.alpha;
+        ctx.save();
+        this.owner.color.applyContext(ctx);
         this.drawer(ctx, this.owner.pos);
-        ctx.globalAlpha = beforeAlpha;
+        ctx.restore();
     }
 }
 class Tofu extends Mono {//図形描画
@@ -811,8 +820,8 @@ class Tofu extends Mono {//図形描画
     }
     set(x, y, width, height, color, alpha) {
         this.pos.set(x, y, width, height);
-        this.brush.color = color;
-        this.brush.alpha = alpha;
+        this.color.value = color;
+        this.color.alpha = alpha;
         return this;
     }
 }
@@ -827,6 +836,7 @@ class Gauge extends Mono {//ゲージ
         this.pos.height = 10;
     }
     draw(ctx) {
+        ctx.save();
         ctx.fillStyle = this.color;
         ctx.strokeStyle = this.color;
         ctx.lineWidth = this.border;
@@ -836,26 +846,40 @@ class Gauge extends Mono {//ゲージ
         const b = this.border + 1;
         ctx.strokeRect(x, y, pos.width, pos.height);
         ctx.fillRect(x + b, y + b, (pos.width - b * 2) * (this.watch?.() / this.max), pos.height - (b * 2));
+        ctx.restore();
     }
 }
 class Tsubu extends Mono {//パーティクル
+    static BrushParticleName=`${Tsubu.name}${Brush.name}`;
     constructor() {
         super(new Child());
-        this.child.addCreator(Tsubu.name, () => {
+        this.child.addCreator(, () => {
             const t = new Mono(new Move(), new Brush());
             t.update = () => {
                 if (!t.move.isActive) t.remove();
-                t.brush.alpha = 1 - t.move.percentage;
+                t.color.alpha = 1 - t.move.percentage;
+            }
+            return t;
+        });
+        this.child.addCreator(`${Tsubu.name}${Moji.name}`, () => {
+            const t = new Mono(new Move(), new Moji());
+            t.update = () => {
+                if (!t.move.isActive) t.remove();
+                t.color.alpha = 1 - t.move.percentage;
             }
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y) {//拡散
+    emittCircle(count, distance, time, size, color, x, y, emoji = undefined) {//拡散
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
-            const t = this.child.pool(Tsubu.name);
-            t.brush.color = color;
-            t.brush.alpha = 1;
+            const t = this.child.pool(`${Tsubu.name}${emoji ? Moji.name : Brush.name}`);
+            if (emoji) {
+                t.moji.set(Util.parseUnicode(emoji), { x: x, y: y, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: Util.rand(360) });
+            } else {
+                t.color.value = color;
+                t.color.alpha = 1;
+            }
             t.pos.set(x, y, size, size);
             t.pos.align = 1;
             t.pos.valign = 1;
@@ -867,8 +891,8 @@ class Tsubu extends Mono {//パーティクル
         for (let i = 0; i < count; i++) {
             const cd = deg * i;
             const t = this.child.pool(Tsubu.name);
-            t.brush.color = color;
-            t.brush.alpha = 1;
+            t.color.value = color;
+            t.color.alpha = 1;
             t.pos.set(x + Util.degToX(cd) * distance, y + Util.degToY(cd) * distance, size, size);
             t.pos.align = 1;
             t.pos.valign = 1;
@@ -957,14 +981,15 @@ class Unit {//キャラ
         if (!data) return;
         this.data = data;
         this.hp = this.maxHp = data.hp;
-        this.point = data.point;        
-        this.owner.addMix(data.isOutOfScreenToRemove? new OutOfScreenToRemove(): new OutOfRangeToRemove(),true);
+        this.point = data.point;
+        this.owner.addMix(data.isOutOfScreenToRemove ? new OutOfScreenToRemove() : new OutOfRangeToRemove(), true);
     }
     _createRequiedState() {
         const owner = this.owner;
         const unit = this;
         owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
             const size = unit.data.size;
+            //unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY, unit.data.defartEffect);
             unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
             unit.defeatRequied();
         }
@@ -1213,7 +1238,7 @@ class Baddie extends Mono {//敵キャラ
         const data = datas.baddies[name];
         this.state.start(this.routines[data.routine](this, pattern, bullets, scene));
         this.pos.parent = parent;
-        this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, name, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.set(data, scene);
         return this;
@@ -1536,7 +1561,7 @@ class BulletBox extends Mono {//弾
     }
     firing(x, y, vx, vy, firstSpeed, accelTime, color, damage, point, removeOffscreen) {
         const bullet = this.child.pool('bullet');
-        bullet.addMix(removeOffscreen?new OutOfScreenToRemove():new OutOfRangeToRemove(),true);
+        bullet.addMix(removeOffscreen ? new OutOfScreenToRemove() : new OutOfRangeToRemove(), true);
         bullet.pos.set(x, y, 8, 8);
         bullet.pos.align = 1;
         bullet.pos.valign = 1;
@@ -1957,12 +1982,13 @@ const EMOJI = Object.freeze({//Font Awesomeの絵文字のUnicode
     FEATHER: 'f52d',
 });
 class CharacterData {//キャラデータ
-    constructor(name, char, color, size, hp, point, routine, forms,options={}) {
-        const {isOutOfScreenToRemove=false,}=options;
+    constructor(name, char, color, size, hp, point, routine, forms, options = {}) {
+        const { defartEffect = undefined, isOutOfScreenToRemove = false, } = options;
         this.name = name;
         this.char = char;
         this.color = color;
         this.size = size;
+        this.defartEffect = defartEffect;
         this.hp = hp;
         this.point = point;
         this.routine = routine;
@@ -1973,7 +1999,7 @@ class CharacterData {//キャラデータ
 export const datas = {//ゲームデータ
     baddies: {
         obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
-        crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop]),
+        crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defartEffect: EMOJI.FEATHER }),
         dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
         bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
         greatcrow: new CharacterData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle]),
