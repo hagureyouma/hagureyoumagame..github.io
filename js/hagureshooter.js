@@ -850,10 +850,11 @@ class Gauge extends Mono {//ゲージ
     }
 }
 class Tsubu extends Mono {//パーティクル
-    static BrushParticleName=`${Tsubu.name}${Brush.name}`;
+    static BrushParticleName = `${Tsubu.name}${Brush.name}`;
+    static MojiParticleName = `${Tsubu.name}${Moji.name}`;
     constructor() {
         super(new Child());
-        this.child.addCreator(, () => {
+        this.child.addCreator(Tsubu.BrushParticleName, () => {
             const t = new Mono(new Move(), new Brush());
             t.update = () => {
                 if (!t.move.isActive) t.remove();
@@ -861,7 +862,7 @@ class Tsubu extends Mono {//パーティクル
             }
             return t;
         });
-        this.child.addCreator(`${Tsubu.name}${Moji.name}`, () => {
+        this.child.addCreator(Tsubu.MojiParticleName, () => {
             const t = new Mono(new Move(), new Moji());
             t.update = () => {
                 if (!t.move.isActive) t.remove();
@@ -873,16 +874,18 @@ class Tsubu extends Mono {//パーティクル
     emittCircle(count, distance, time, size, color, x, y, emoji = undefined) {//拡散
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
-            const t = this.child.pool(`${Tsubu.name}${emoji ? Moji.name : Brush.name}`);
+            let t;
             if (emoji) {
+                t = this.child.pool(Tsubu.MojiParticleName);
                 t.moji.set(Util.parseUnicode(emoji), { x: x, y: y, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: Util.rand(360) });
             } else {
+                t = this.child.pool(Tsubu.BrushParticleName);
                 t.color.value = color;
                 t.color.alpha = 1;
+                t.pos.set(x, y, size, size);
+                t.pos.align = 1;
+                t.pos.valign = 1;
             }
-            t.pos.set(x, y, size, size);
-            t.pos.align = 1;
-            t.pos.valign = 1;
             t.move.relativeDegForTime(deg * i, distance, time);
         }
     }
@@ -989,8 +992,8 @@ class Unit {//キャラ
         const unit = this;
         owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
             const size = unit.data.size;
-            //unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY, unit.data.defartEffect);
-            unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
+            unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY, unit.data.defartEffect);
+            //unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
             unit.defeatRequied();
         }
     }
@@ -1027,7 +1030,7 @@ class Player extends Mono {//プレイヤーキャラ
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         const data = datas.player.data;
         this.state.start(this.stateDefault.call(this, bullets, scene));
-        this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1,angle:180 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.set(data, scene);
         this.unit.kocount = 0;
@@ -1568,8 +1571,8 @@ class BulletBox extends Mono {//弾
         bullet.move.set(vx, vy);
         bullet.move.setChangeSpeed(accelTime, firstSpeed);
         bullet.collision.set(6, 6);
+        bullet.color.value = color;
         bullet.brush.circle();
-        bullet.brush.color = color;
         bullet.bullet.set(damage, point);
         return bullet;
     }
