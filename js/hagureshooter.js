@@ -419,15 +419,17 @@ class Pos {//座標コンポーネント
         this.parent = undefined;
     }
     set(x, y, width, height) {
-        Object.assign(this, { x, y, width, height });
+        Object.assign(this, { x, y, width, height, halfWidth: width * 0.5, halfHeight: height * 0.5 });
         return this;
     }
     get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0) }
     get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0) }
-    get left() { return Math.floor(this.linkX - this.align * this.width * 0.5) };
-    get top() { return Math.floor(this.linkY - this.valign * this.height * 0.5) };
+    get left() { return Math.floor(this.linkX - this.align * this.halfWidth) };
+    get top() { return Math.floor(this.linkY - this.valign * this.halfHeight) };
     get right() { return this.left + this.width; }
     get bottom() { return this.top + this.height; }
+    get center() { return this.left + this.halfWidth; }
+    get middle() { return this.top + this.halfHeight; }
     get rect() { return this._rect.set(this.left, this.top, this.width, this.height) }
 }
 class Move {//動作コンポーネント
@@ -772,11 +774,13 @@ class Moji {//文字表示コンポーネント
     get getText() { return typeof this.text === 'function' ? this.text() : this.text };
     draw(ctx) {
         ctx.save();
-        ctx.rotate(this.owner.pos.angle * Util.radian);
+        const pos = this.owner.pos;
+        ctx.translate(pos.center, pos.middle);
+        ctx.rotate(pos.angle * Util.radian);
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
         this.owner.color.applyContext(ctx);
-        ctx.fillText(this.getText, this.owner.pos.left, this.owner.pos.top);
+        ctx.fillText(this.getText, -pos.halfWidth, -pos.halfHeight);
         ctx.restore();
     }
 }
@@ -871,35 +875,30 @@ class Tsubu extends Mono {//パーティクル
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y, emoji = undefined) {//拡散
+    emittCircle(count, distance, time, size, color, x, y, isConverge = false, emoji = undefined) {//拡散
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
-            let t;
+            let t, cx, cy,cd = deg * i;
+            if (!isConverge) {
+                cx = x;
+                cy = y;
+            } else {
+                cx=x + Util.degToX(cd) * distance;
+                cy= y + Util.degToY(cd) * distance;
+                cd=(cd + 180) % 360;
+            }
             if (emoji) {
                 t = this.child.pool(Tsubu.MojiParticleName);
-                t.moji.set(Util.parseUnicode(emoji), { x: x, y: y, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: Util.rand(360) });
+                t.moji.set(Util.parseUnicode(emoji), { x: cx, y: cy, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: Util.rand(360) });
             } else {
                 t = this.child.pool(Tsubu.BrushParticleName);
                 t.color.value = color;
                 t.color.alpha = 1;
-                t.pos.set(x, y, size, size);
+                t.pos.set(cx, cy, size, size);
                 t.pos.align = 1;
                 t.pos.valign = 1;
             }
-            t.move.relativeDegForTime(deg * i, distance, time);
-        }
-    }
-    emittConvergeCircle(count, distance, time, size, color, x, y) {//収束
-        const deg = 360 / count;
-        for (let i = 0; i < count; i++) {
-            const cd = deg * i;
-            const t = this.child.pool(Tsubu.name);
-            t.color.value = color;
-            t.color.alpha = 1;
-            t.pos.set(x + Util.degToX(cd) * distance, y + Util.degToY(cd) * distance, size, size);
-            t.pos.align = 1;
-            t.pos.valign = 1;
-            t.move.relativeDegForTime((cd + 180) % 360, distance, time);
+            t.move.relativeDegForTime(cd, distance, time);
         }
     }
 }
@@ -993,7 +992,6 @@ class Unit {//キャラ
         owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
             const size = unit.data.size;
             unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY, unit.data.defartEffect);
-            //unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY);
             unit.defeatRequied();
         }
     }
@@ -1009,7 +1007,7 @@ class Unit {//キャラ
     spawnRequied() {//出現時に呼ぶ
         const size = this.data.size;
         const time = size * 0.005;
-        this.scene.effect.emittConvergeCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY);
+        this.scene.effect.emittCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY,true);
         return time;
     }
     defeat() {//撃破
@@ -1030,7 +1028,7 @@ class Player extends Mono {//プレイヤーキャラ
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         const data = datas.player.data;
         this.state.start(this.stateDefault.call(this, bullets, scene));
-        this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1,angle:180 });
+        this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: 180 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.set(data, scene);
         this.unit.kocount = 0;
@@ -1756,19 +1754,19 @@ class ScenePlay extends Mono {//プレイ画面
         const phaseLength = 30;
         this.elaps = 0;
         //道中
-        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-            if (this.elaps > phaseLength) {
-                yield undefined;
-                continue;
-            }
-            const baddieName = appears[Util.rand(appears.length - 1)];
-            const data = datas.baddies[baddieName];
-            const formation = data.forms[Util.rand(data.forms.length - 1)];
-            const spawnMax = Math.floor(game.width / data.size) - 2;
-            const spawnCount = Util.rand(spawnMax);
-            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
-            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        }
+        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+        //     if (this.elaps > phaseLength) {
+        //         yield undefined;
+        //         continue;
+        //     }
+        //     const baddieName = appears[Util.rand(appears.length - 1)];
+        //     const data = datas.baddies[baddieName];
+        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
+        //     const spawnMax = Math.floor(game.width / data.size) - 2;
+        //     const spawnCount = Util.rand(spawnMax);
+        //     this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
+        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        // }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         if (this.isFailure) return;
