@@ -105,6 +105,9 @@ class Game {//ゲーム本体
     get range() { return Math.abs(this.rangeRect.x) };
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
     get sec() { return this.time / 1000; }
+    save(data, key) { Util.save(data, key); }
+    load(key) { return Util.load(key); }
+    deleteSave(key) { Util.deleteSave(key); }
 }
 class Layers {//レイヤー管理
     constructor(width, height) {
@@ -281,6 +284,9 @@ class Util {//便利メソッド詰め合わせ
     static randomArray = (range, length) => Util.shiffledArray(range).slice(0, length);
     static isGenerator = (obj) => obj && typeof obj.next === 'function' && typeof obj.throw === 'function';
     static isImageFile = (file) => /\.(jpg|jpeg|png|gif)$/i.test(file)
+    static save(item, key) { localStorage.setItem(key, JSON.stringify(item)); }
+    static load(key) { return JSON.parse(localStorage.getItem(key)); }
+    static deleteSave(key) { localStorage.removeItem(key); }
 }
 class Rect {//矩形
     constructor() {
@@ -878,14 +884,14 @@ class Tsubu extends Mono {//パーティクル
     emittCircle(count, distance, time, size, color, x, y, isConverge = false, emoji = undefined) {//拡散
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
-            let t, cx, cy,cd = deg * i;
+            let t, cx, cy, cd = deg * i;
             if (!isConverge) {
                 cx = x;
                 cy = y;
             } else {
-                cx=x + Util.degToX(cd) * distance;
-                cy= y + Util.degToY(cd) * distance;
-                cd=(cd + 180) % 360;
+                cx = x + Util.degToX(cd) * distance;
+                cy = y + Util.degToY(cd) * distance;
+                cd = (cd + 180) % 360;
             }
             if (emoji) {
                 t = this.child.pool(Tsubu.MojiParticleName);
@@ -990,9 +996,16 @@ class Unit {//キャラ
         const owner = this.owner;
         const unit = this;
         owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
-            const size = unit.data.size;
-            unit.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, unit.data.color, owner.pos.linkX, owner.pos.linkY, unit.data.defartEffect);
+            unit.PlayDefeatEffect();
             unit.defeatRequied();
+        }
+    }
+    PlayDefeatEffect() {
+        const size = this.data.size;
+        if (this.data.defartEffect) {
+            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, false, this.data.defartEffect);
+        } else {
+            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY);
         }
     }
     resetHp() {
@@ -1004,10 +1017,10 @@ class Unit {//キャラ
         if (this.hp > 0) return;
         this.defeat();
     }
-    spawnRequied() {//出現時に呼ぶ
+    spawnRequied() {//画面内で出現した際に呼ぶ
         const size = this.data.size;
         const time = size * 0.005;
-        this.scene.effect.emittCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY,true);
+        this.scene.effect.emittCircle(8, size * 1.5, time, size * 0.2, 'white', this.owner.pos.linkX, this.owner.pos.linkY, true);
         return time;
     }
     defeat() {//撃破
@@ -1722,7 +1735,10 @@ class ScenePlay extends Mono {//プレイ画面
             }
             if (this.isFailure) {//負けた
                 yield* this.showTelop(text.gameover, 2);
-                if (this.isNewRecord()) yield* new SceneHighscore(shared.playdata.total).stateDefault();
+                if (this.isNewRecord()) {
+                    game.save(shared,cfg.saveData.name);//セーブ
+                    yield* new SceneHighscore(shared.playdata.total).stateDefault();
+                }
                 switch (yield* new SceneGameOver(this.newGame).stateDefault()) {
                     case text.continue:
                         this.continueGame();
@@ -1754,19 +1770,19 @@ class ScenePlay extends Mono {//プレイ画面
         const phaseLength = 30;
         this.elaps = 0;
         //道中
-        // while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
-        //     if (this.elaps > phaseLength) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     const baddieName = appears[Util.rand(appears.length - 1)];
-        //     const data = datas.baddies[baddieName];
-        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
-        //     const spawnMax = Math.floor(game.width / data.size) - 2;
-        //     const spawnCount = Util.rand(spawnMax);
-        //     this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
-        //     yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
-        // }
+        while (this.elaps <= phaseLength || this.baddies.child.liveCount > 0) {
+            if (this.elaps > phaseLength) {
+                yield undefined;
+                continue;
+            }
+            const baddieName = appears[Util.rand(appears.length - 1)];
+            const data = datas.baddies[baddieName];
+            const formation = data.forms[Util.rand(data.forms.length - 1)];
+            const spawnMax = Math.floor(game.width / data.size) - 2;
+            const spawnCount = Util.rand(spawnMax);
+            this.state.start(this.baddies.formation.call(this.baddies, formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, 0));
+            yield* waitForTime(Util.rand(spawnCount * 0.5, 1));
+        }
         if (this.isFailure) return;
         yield* this.showTelop('WARNING!', 2, 0.25);
         if (this.isFailure) return;
@@ -1958,6 +1974,9 @@ export const cfg = {//ゲームの設定
     input: {
         repeatWaitFirst: 0.25,
         repeatWait: 0.125,
+    },
+    saveData:{
+        name:'saveData'
     }
 }
 let text = {//テキスト
@@ -2001,10 +2020,10 @@ export const datas = {//ゲームデータ
     baddies: {
         obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
         crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defartEffect: EMOJI.FEATHER }),
-        dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside]),
-        bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle]),
-        greatcrow: new CharacterData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle]),
-        torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within]),
+        dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside], { defartEffect: EMOJI.FEATHER }),
+        bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle], { defartEffect: EMOJI.FEATHER }),
+        greatcrow: new CharacterData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle], { defartEffect: EMOJI.FEATHER }),
+        torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within], { defartEffect: EMOJI.FEATHER }),
     },
     player: {
         data: new CharacterData('player', EMOJI.CAT, 'black', 40, 1, 0),
@@ -2039,13 +2058,16 @@ class scoreData {//成績データ
         this.ko = from?.ko || 0;
     }
 }
-export const shared = {//グローバル変数
-    playdata: {
-        total: new scoreData(),
-        backup: new scoreData()
-    },
-    highscores: []
+class saveData {
+    constructor() {
+        this.playdata = {
+            total: new scoreData(),
+            backup: new scoreData()
+        }
+        this.highscores = [];
+    }
 }
+export let shared//共用変数
 //ゲーム実行
 export const game = new Game();
 game.start([cfg.font.default, cfg.font.emoji], () => {
@@ -2062,5 +2084,7 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
 
     game.layers.add(cfg.layer);
     game.layers.get('effect').enableBlur();
+
+    shared=game.load(cfg.saveData.name)??new saveData();
     game.pushScene(new SceneTitle());
 });
