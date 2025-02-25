@@ -704,9 +704,12 @@ class Color {//色コンポーネント
         this.reset();
     }
     reset() {
-        this.value = this.baseColor = cfg.theme.text;
+        this.setColor(cfg.theme.text);
         this.alpha = this.baseAlpha = 1;
         this.func = undefined;
+    }
+    setColor(color) {
+        this.value = this.baseColor = color;
     }
     restore() {
         this.value = this.baseColor;
@@ -766,7 +769,7 @@ class Moji {//文字表示コンポーネント
         this.weight = weight;
         this.size = size;
         this.font = font;
-        this.owner.color.value = color;
+        this.owner.color.setColor(color);
         const ctx = game.layers.get('main').getContext();
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
         ctx.textBaseline = this.baseLine;
@@ -830,7 +833,7 @@ class Tofu extends Mono {//図形描画
     }
     set(x, y, width, height, color, alpha) {
         this.pos.set(x, y, width, height);
-        this.color.value = color;
+        this.color.setColor(color);
         this.color.alpha = alpha;
         return this;
     }
@@ -898,7 +901,7 @@ class Tsubu extends Mono {//パーティクル
                 t.moji.set(Util.parseUnicode(emoji), { x: cx, y: cy, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: Util.rand(360) });
             } else {
                 t = this.child.pool(Tsubu.BrushParticleName);
-                t.color.value = color;
+                t.color.setColor(color);
                 t.color.alpha = 1;
                 t.pos.set(cx, cy, size, size);
                 t.pos.align = 1;
@@ -943,10 +946,10 @@ class Menu extends Mono {//メニュー
         }
     }
     moveIndex(newIndex) {
-        this.child.objs[this.index + this.indexOffset].color.value = this.color;
+        this.child.objs[this.index + this.indexOffset].color.setColor(this.color);
         this.index = newIndex;
         const item = this.child.objs[newIndex + this.indexOffset];
-        item.color.value = this.highlite;
+        item.color.setColor(this.highlite);
         const w = item.pos.width;
         const x = (w * 0.5) * this.pos.align;
         this.curL.pos.x = item.pos.x - x;
@@ -1416,7 +1419,7 @@ class Baddie extends Mono {//敵キャラ
                 scene.baddiesbullets.child.removeAll();
                 const pos = user.pos;
                 for (let i = 0; i < 16; i++) {
-                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height));
+                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height), false,user.unit.data.defartEffect);
                     yield* waitForTime(1 / 8);
                 }
                 user.unit.defeatRequied();
@@ -1582,7 +1585,7 @@ class BulletBox extends Mono {//弾
         bullet.move.set(vx, vy);
         bullet.move.setChangeSpeed(accelTime, firstSpeed);
         bullet.collision.set(6, 6);
-        bullet.color.value = color;
+        bullet.color.setColor(color);
         bullet.brush.circle();
         bullet.bullet.set(damage, point);
         return bullet;
@@ -1604,6 +1607,22 @@ class BulletBox extends Mono {//弾
         for (let i = 0; i < count; i++) {
             result[i] = this.firing(x, y, Util.degToX((d * i + offset) % 360) * speed, Util.degToY((d * i + offset) % 360) * speed, firstSpeed, accelTime, color, damage, point, removeOffscreen);
         }
+        return result;
+    }
+}
+class DialogMenu extends Mono {//ダイアログメニュー
+    constructor(caption, items) {
+        super(new Child());
+        this.child.drawlayer = 'ui';
+        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
+        this.child.add(new Label(caption, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
+        for (const item of items) this.menu.add(item);
+    }
+    *stateDefault() {
+        game.layers.get('effect').isPauseBlur = true;
+        const result = yield* this.menu.stateSelect();
+        game.layers.get('effect').isPauseBlur = false;
         return result;
     }
 }
@@ -1736,7 +1755,7 @@ class ScenePlay extends Mono {//プレイ画面
             if (this.isFailure) {//負けた
                 yield* this.showTelop(text.gameover, 2);
                 if (this.isNewRecord()) {
-                    game.save(shared,cfg.saveData.name);//セーブ
+                    game.save(shared, cfg.saveData.name);//セーブ
                     yield* new SceneHighscore(shared.playdata.total).stateDefault();
                 }
                 switch (yield* new SceneGameOver(this.newGame).stateDefault()) {
@@ -1837,19 +1856,11 @@ class ScenePlay extends Mono {//プレイ画面
 class ScenePause extends Mono {//中断メニュー画面
     constructor() {
         super(new Child());
-        this.child.drawlayer = 'ui';
-        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
-        this.child.add(new Label(text.pause, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
-        this.menu.add(text.resume);
-        this.menu.add(text.restart);
-        this.menu.add(text.returntitle);
+        this.child.add(this.dialog = new DialogMenu(text.pause, [text.resume, text.restart, text.returntitle]));
     }
     *stateDefault() {
         game.pushScene(this);
-        game.layers.get('effect').isPauseBlur = true;
-        const result = yield* this.menu.stateSelect();
-        game.layers.get('effect').isPauseBlur = false;
+        const result = yield* this.dialog.stateDefault();
         game.popScene();
         return result;
     }
@@ -1887,17 +1898,12 @@ class SceneClear extends Mono {//ステージクリア画面
 class SceneGameOver extends Mono {//ゲームオーバー画面
     constructor() {
         super(new Child());
-        this.child.drawlayer = 'ui';
-        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
-        this.child.add(new Label(text.gameover, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
-        this.menu.isEnableCancel = false;
-        this.menu.add(text.continue);
-        this.menu.add(text.returntitle);
+        this.child.add(this.dialog = new DialogMenu(text.gameover, [text.continue, text.returntitle]));
+        this.dialog.menu.isEnableCancel = false;
     }
     *stateDefault() {
         game.pushScene(this);
-        const result = yield* this.menu.stateSelect();
+        const result = yield* this.dialog.stateDefault();
         game.popScene();
         return result;
     }
@@ -1914,7 +1920,7 @@ class SceneHighscore extends Mono {//ハイスコア画面
             const score = shared.highscores[i];
             const label = new Label(`${(i + 1).toString().padStart(2, ' ')}:${score.point}`, x, y + i * (cfg.fontSize.medium * 1.25), { valign: 1 });
             if (score === newRecord) {
-                label.color.value = cfg.theme.highlite;
+                label.color.setColor(cfg.theme.highlite);
                 label.color.blink(0.5);
             }
             this.child.add(label);
@@ -1975,8 +1981,8 @@ export const cfg = {//ゲームの設定
         repeatWaitFirst: 0.25,
         repeatWait: 0.125,
     },
-    saveData:{
-        name:'saveData'
+    saveData: {
+        name: 'saveData'
     }
 }
 let text = {//テキスト
@@ -2085,6 +2091,6 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
     game.layers.add(cfg.layer);
     game.layers.get('effect').enableBlur();
 
-    shared=game.load(cfg.saveData.name)??new saveData();
+    shared = game.load(cfg.saveData.name) ?? new saveData();
     game.pushScene(new SceneTitle());
 });
