@@ -446,6 +446,7 @@ class Move {//動作コンポーネント
     }
     reset() {
         this.set(0, 0);
+        this.setRotate(0);
         this.setRevo(0);
     }
     set(vx, vy) {
@@ -500,6 +501,9 @@ class Move {//動作コンポーネント
     setRevo(speedDeg) {
         this.revo = speedDeg;
     }
+    setRotate(speedDeg) {
+        this.rotate = speedDeg;
+    }
     update() {
         const delta = this.ease.getCurrent();
         const pos = this.owner.pos;
@@ -507,6 +511,9 @@ class Move {//動作コンポーネント
             const [x, y] = Util.degRotateXY(pos.x, pos.y, this.revo * delta);
             pos.x = x;
             pos.y = y;
+        }
+        if (this.rotate !== 0) {
+            pos.angle = (pos.angle + this.rotate * delta) % 360;
         }
         pos.x += this.vx * delta;
         pos.y += this.vy * delta;
@@ -711,6 +718,9 @@ class Color {//色コンポーネント
     setColor(color) {
         this.value = this.baseColor = color;
     }
+    setAlpha(alpha) {
+        this.alpha = this.baseAlpha = alpha;
+    }
     restore() {
         this.value = this.baseColor;
         this.alpha = this.baseAlpha;
@@ -862,12 +872,12 @@ class Gauge extends Mono {//ゲージ
         ctx.restore();
     }
 }
-class Tsubu extends Mono {//パーティクル
-    static BrushParticleName = `${Tsubu.name}${Brush.name}`;
-    static MojiParticleName = `${Tsubu.name}${Moji.name}`;
+class Particle extends Mono {//パーティクル
+    static BrushParticleName = `${Particle.name}${Brush.name}`;
+    static MojiParticleName = `${Particle.name}${Moji.name}`;
     constructor() {
         super(new Child());
-        this.child.addCreator(Tsubu.BrushParticleName, () => {
+        this.child.addCreator(Particle.BrushParticleName, () => {
             const t = new Mono(new Move(), new Brush());
             t.update = () => {
                 if (!t.move.isActive) t.remove();
@@ -875,7 +885,7 @@ class Tsubu extends Mono {//パーティクル
             }
             return t;
         });
-        this.child.addCreator(Tsubu.MojiParticleName, () => {
+        this.child.addCreator(Particle.MojiParticleName, () => {
             const t = new Mono(new Move(), new Moji());
             t.update = () => {
                 if (!t.move.isActive) t.remove();
@@ -884,7 +894,8 @@ class Tsubu extends Mono {//パーティクル
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y, isConverge = false, emoji = undefined) {//拡散
+    emittCircle(count, distance, time, size, color, x, y, isConverge = false, options) {//拡散
+        const { emoji = undefined, angle = 0,isRandomAngle=false, rotate = 0 } = options;
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             let t, cx, cy, cd = deg * i;
@@ -897,10 +908,12 @@ class Tsubu extends Mono {//パーティクル
                 cd = (cd + 180) % 360;
             }
             if (emoji) {
-                t = this.child.pool(Tsubu.MojiParticleName);
-                t.moji.set(Util.parseUnicode(emoji), { x: cx, y: cy, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: Util.rand(360) });
+                t = this.child.pool(Particle.MojiParticleName);
+                t.moji.set(Util.parseUnicode(emoji), { x: cx, y: cy, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1 });
+                t.pos.angle = angle;
+                t.move.rotate = rotate;
             } else {
-                t = this.child.pool(Tsubu.BrushParticleName);
+                t = this.child.pool(Particle.BrushParticleName);
                 t.color.setColor(color);
                 t.color.alpha = 1;
                 t.pos.set(cx, cy, size, size);
@@ -1006,7 +1019,7 @@ class Unit {//キャラ
     PlayDefeatEffect() {
         const size = this.data.size;
         if (this.data.defartEffect) {
-            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, false, this.data.defartEffect);
+            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, false, {emoji:this.data.defartEffect,isRandomAngle:true, rotate:360});
         } else {
             this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY);
         }
@@ -1419,7 +1432,7 @@ class Baddie extends Mono {//敵キャラ
                 scene.baddiesbullets.child.removeAll();
                 const pos = user.pos;
                 for (let i = 0; i < 16; i++) {
-                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height), false,user.unit.data.defartEffect);
+                    scene.effect.emittCircle(8, pos.width * 1.5, pos.width * 0.0125, pos.width * 0.2, user.color.baseColor, pos.left + Util.rand(pos.width), pos.top + Util.rand(pos.height), false, user.unit.data.defartEffect);
                     yield* waitForTime(1 / 8);
                 }
                 user.unit.defeatRequied();
@@ -1685,7 +1698,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.child.add(this.playerbullets = new BulletBox());
         this.child.add(this.baddiesbullets = new BulletBox());
         //パーティクル
-        this.child.add(this.effect = new Tsubu());
+        this.child.add(this.effect = new Particle());
         this.effect.child.drawlayer = 'effect';
         //UI
         this.child.add(this.ui = new Mono(new Child()));
