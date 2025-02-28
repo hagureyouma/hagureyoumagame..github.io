@@ -1017,11 +1017,18 @@ class Unit {//キャラ
             unit.defeatRequied();
         }
     }
+    _playParticleEffect(datas){
+
+    }
     PlayDefeatEffect() {
         const size = this.data.size;
+        let char,color,isRandomAngle,count,rotate;
+
         if (this.data.defeatEffect) {
-            const de=datas.unit.defeatEffect[this.data.defeatEffect];
-            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, false, { emoji: de.char, isRandomAngle: de.isRandomAngle, rotate: de.rotate });
+            ({char,color,isRandomAngle,count,rotate}= datas.unit.defeatEffect[this.data.defeatEffect]);
+
+            if(color ==='')color=this.data.color;
+            this.scene.effect.emittCircle(count, size * 1.5, size * 0.0125, size * 0.5, color, this.owner.pos.linkX, this.owner.pos.linkY, false, { emoji: char, isRandomAngle: isRandomAngle, rotate: rotate });
         } else {
             this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY);
         }
@@ -1039,7 +1046,7 @@ class Unit {//キャラ
         const size = this.data.size;
         const time = size * 0.005;
         if (datas.unit.spawnEffect) {
-            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, true, { emoji: this.data.defeatEffect, isRandomAngle: true, rotate: 360 });
+            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, true, { emoji: datas.unit.spawnEffect, isRandomAngle: false, rotate: 0});
         } else {
             this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY);
         }
@@ -2045,16 +2052,28 @@ class CharacterData {//キャラデータ
 }
 export const datas = {//ゲームデータ
     unit: {
-        spawnEffect: EMOJI.STAR,
+        spawnEffect: {
+            star: {
+                char: EMOJI.STAR,
+                color:'yellow',
+                isRandomAngle: false,
+                count:5,
+                rotate: 0
+            },
+        },
         defeatEffect: {
             star: {
                 char: EMOJI.STAR,
+                color:'yellow',
                 isRandomAngle: false,
+                count:5,
                 rotate: 0
             },
             feather: {
                 char: EMOJI.FEATHER,
+                color:'',
                 isRandomAngle: true,
+                count:7,
                 rotate: 360
             }
         }
