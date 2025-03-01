@@ -895,7 +895,7 @@ class Particle extends Mono {//パーティクル
         });
     }
     emittCircle(count, distance, time, size, color, x, y, isConverge = false, options = {}) {//拡散
-        const { emoji = undefined, angle = 0, isRandomAngle = false, rotate = 0 } = options;
+        const { emoji: emoji = undefined, angle = 0, isRandomAngle = false, rotate = 0 } = options;
         const deg = 360 / count;
         for (let i = 0; i < count; i++) {
             let t, cx, cy, cd = deg * i;
@@ -1009,48 +1009,32 @@ class Unit {//キャラ
         this.point = data.point;
         this.owner.addMix(data.isOutOfScreenToRemove ? new OutOfScreenToRemove() : new OutOfRangeToRemove(), true);
     }
-    _createRequiedState() {
-        const owner = this.owner;
-        const unit = this;
-        owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
-            unit.PlayDefeatEffect();
-            unit.defeatRequied();
-        }
-    }
-    _playParticleEffect(datas){
-
-    }
-    PlayDefeatEffect() {
-        const size = this.data.size;
-        let char,color,isRandomAngle,count,rotate;
-
-        if (this.data.defeatEffect) {
-            ({char,color,isRandomAngle,count,rotate}= datas.unit.defeatEffect[this.data.defeatEffect]);
-
-            if(color ==='')color=this.data.color;
-            this.scene.effect.emittCircle(count, size * 1.5, size * 0.0125, size * 0.5, color, this.owner.pos.linkX, this.owner.pos.linkY, false, { emoji: char, isRandomAngle: isRandomAngle, rotate: rotate });
-        } else {
-            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY);
-        }
-    }
     resetHp() {
         this.hp = this.maxHp;
     }
-    isBanish(damage) {//ダメージを与える
+    banish(damage) {//ダメージを与える
         if (this.invincible || this.hp == 0) return;
         this.hp = Math.max(this.hp - damage, 0);
         if (this.hp > 0) return;
         this.defeat();
     }
-    spawnRequied() {//画面内で出現した際に呼ぶ
+    _playEffect(name) {
+        let { emoji, color, isRandomAngle, count, rotate, isConverge } = datas.unit.effects[name];
+        if (color === '') color = this.data.color;
         const size = this.data.size;
-        const time = size * 0.005;
-        if (datas.unit.spawnEffect) {
-            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.5, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY, true, { emoji: datas.unit.spawnEffect, isRandomAngle: false, rotate: 0});
-        } else {
-            this.scene.effect.emittCircle(8, size * 1.5, size * 0.0125, size * 0.2, this.data.color, this.owner.pos.linkX, this.owner.pos.linkY);
-        }
-        return time;
+        const particleSize = size * (emoji === '' ? 0.2 : 0.5);
+        this.scene.effect.emittCircle(count, size * 1.5, size * 0.0125, particleSize, color, this.owner.pos.linkX, this.owner.pos.linkY, isConverge, { emoji: emoji, isRandomAngle: isRandomAngle, rotate: rotate });
+    }
+    playSpawnEffect() {
+        this._playEffect(datas.unit.defaultSpawnEffect);
+    }
+    playDefeatEffect() {
+        const name = this.data.defeatEffect;
+        this._playEffect(name === '' ? datas.unit.defaultDefeatEffect : name);
+    }
+    spawnRequied() {//画面内で出現した際に呼ぶ
+        this.playSpawnEffect();
+        return this.data.size * 0.005;
     }
     defeat() {//撃破
         const state = this.owner.state;
@@ -1061,6 +1045,14 @@ class Unit {//キャラ
         shared.playdata.total.ko += this.kocount;
         this.onDefeat?.();
         this.owner.remove();
+    }
+    _createRequiedState() {
+        const owner = this.owner;
+        const unit = this;
+        owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
+            unit.playDefeatEffect();
+            unit.defeatRequied();
+        }
     }
     get isDefeat() { return this.hp <= 0; }
     get hpRatio() { return this.hp / this.maxHp };
@@ -1756,7 +1748,7 @@ class ScenePlay extends Mono {//プレイ画面
                 target.color.flash('crimson');
                 shared.playdata.total.point += bullet.bullet.point;
                 bullet.remove();
-                target.unit.isBanish(bullet.bullet.damage);
+                target.unit.banish(bullet.bullet.damage);
             });
         }
         //弾の当たり判定
@@ -2052,34 +2044,37 @@ class CharacterData {//キャラデータ
 }
 export const datas = {//ゲームデータ
     unit: {
-        spawnEffect: {
+        defaultSpawnEffect: 'star',
+        defaultDefeatEffect: 'star2',
+        effects: {
             star: {
-                char: EMOJI.STAR,
-                color:'yellow',
+                emoji: EMOJI.STAR,
+                color: '',
                 isRandomAngle: false,
-                count:5,
-                rotate: 0
+                count: 5,
+                rotate: 0,
+                isConverge: true,
             },
-        },
-        defeatEffect: {
-            star: {
-                char: EMOJI.STAR,
-                color:'yellow',
+            star2: {
+                emoji: EMOJI.STAR,
+                color: 'yellow',
                 isRandomAngle: false,
-                count:5,
-                rotate: 0
+                count: 5,
+                rotate: 0,
+                isConverge: false,
             },
             feather: {
-                char: EMOJI.FEATHER,
-                color:'',
+                emoji: EMOJI.FEATHER,
+                color: '',
                 isRandomAngle: true,
-                count:7,
-                rotate: 360
+                count: 7,
+                rotate: 360,
+                isConverge: false,
             }
         }
     },
     baddies: {
-        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle], { defeatEffect: 'star' }),
+        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
         crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defeatEffect: 'feather' }),
         dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside], { defeatEffect: 'feather' }),
         bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle], { defeatEffect: 'feather' }),
@@ -2087,7 +2082,7 @@ export const datas = {//ゲームデータ
         torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within], { defeatEffect: 'feather' }),
     },
     player: {
-        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 1, 0, '', undefined, { defeatEffect: 'star' }),
+        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 1, 0, '', undefined, { defeatEffect: 'star2' }),
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
