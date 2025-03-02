@@ -948,7 +948,7 @@ class Menu extends Mono {//メニュー
         function* move(key, direction) {
             if (!game.input.isDown(key)) return;
             this.moveIndex((this.index + direction) % length);
-            yield* waitForTimeOrFrag(game.input.isPress(key) ? cfg.input.repeatWaitFirst : cfg.input.repeatWaitFirst, () => game.input.isUp(key) || game.input.isPress('z') || (this.isEnableCancel && game.input.isPress('x')));
+            yield* waitForTimeOrFrag(game.input.isPress(key) ? cfg.input.repeatWaitFirst : cfg.input.repeatWait, () => game.input.isUp(key) || game.input.isPress('z') || (this.isEnableCancel && game.input.isPress('x')));
         }
         this.moveIndex(newIndex);
         while (true) {
@@ -1629,16 +1629,17 @@ class BulletBox extends Mono {//弾
     }
 }
 class DialogMenu extends Mono {//ダイアログメニュー
-    constructor(caption, items) {
+    constructor(caption, items,isPause=false) {
         super(new Child());
         this.child.drawlayer = 'ui';
         this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
         this.child.add(new Label(caption, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
         for (const item of items) this.menu.add(item);
+        this.isPause = isPause;
     }
     *stateDefault() {
-        game.layers.get('effect').isPauseBlur = true;
+        game.layers.get('effect').isPauseBlur = this.isPause;
         const result = yield* this.menu.stateSelect();
         game.layers.get('effect').isPauseBlur = false;
         return result;
@@ -1874,7 +1875,7 @@ class ScenePlay extends Mono {//プレイ画面
 class ScenePause extends Mono {//中断メニュー画面
     constructor() {
         super(new Child());
-        this.child.add(this.dialog = new DialogMenu(text.pause, [text.resume, text.restart, text.returntitle]));
+        this.child.add(this.dialog = new DialogMenu(text.pause, [text.resume, text.restart, text.returntitle],true));
     }
     *stateDefault() {
         game.pushScene(this);
