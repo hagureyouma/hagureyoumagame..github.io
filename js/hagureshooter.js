@@ -897,8 +897,9 @@ class Particle extends Mono {//パーティクル
     emittCircle(count, distance, time, size, color, x, y, isConverge = false, options = {}) {//拡散
         const { emoji: emoji = undefined, angle = 0, isRandomAngle = false, rotate = 0 } = options;
         const deg = 360 / count;
+        const degOffset = 90;
         for (let i = 0; i < count; i++) {
-            let t, cx, cy, cd = deg * i;
+            let t, cx, cy, cd = deg * i + degOffset;
             if (!isConverge) {
                 cx = x;
                 cy = y;
@@ -1629,7 +1630,7 @@ class BulletBox extends Mono {//弾
     }
 }
 class DialogMenu extends Mono {//ダイアログメニュー
-    constructor(caption, items,isPause=false) {
+    constructor(caption, items, isPause = false) {
         super(new Child());
         this.child.drawlayer = 'ui';
         this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
@@ -1752,6 +1753,11 @@ class ScenePlay extends Mono {//プレイ画面
                 target.unit.banish(bullet.bullet.damage);
             });
         }
+        //キャラの当たり判定
+        this.baddies.child.each((baddie) => {
+            if (!this.player.collision.hit(baddie)) return;
+            this.player.unit.banish(1);
+        });
         //弾の当たり判定
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
@@ -1875,7 +1881,7 @@ class ScenePlay extends Mono {//プレイ画面
 class ScenePause extends Mono {//中断メニュー画面
     constructor() {
         super(new Child());
-        this.child.add(this.dialog = new DialogMenu(text.pause, [text.resume, text.restart, text.returntitle],true));
+        this.child.add(this.dialog = new DialogMenu(text.pause, [text.resume, text.restart, text.returntitle], true));
     }
     *stateDefault() {
         game.pushScene(this);
