@@ -998,7 +998,7 @@ class Unit {//キャラ
     reset() {
         this.hp = this.maxHp = this.point = this.kocount = 1;
         this.invincible = this.firing = false;//無敵、射撃中
-        this.data = this.scene = this.onDefeat = undefined;
+        this.data = this.scene = this.onBanish = this.onDefeat = undefined;
     }
     set(data, scene) {
         this.reset();
@@ -1016,7 +1016,8 @@ class Unit {//キャラ
     banish(damage) {//ダメージを与える
         if (this.invincible || this.hp == 0) return;
         this.hp = Math.max(this.hp - damage, 0);
-        if (this.hp > 0) return;
+        this.onBanish?.();
+        if (this.hp > 0) return;        
         this.defeat();
     }
     _playEffect(name) {
@@ -1050,10 +1051,11 @@ class Unit {//キャラ
     _createRequiedState() {
         const owner = this.owner;
         const unit = this;
-        owner.state.defeat ??= function* () {//HPが0になると移行するステートを作成
-            unit.playDefeatEffect();
-            unit.defeatRequied();
-        }
+        owner.state.defeat ??= this.stateDefeat.bind(this);
+    }
+    *stateDefeat() {
+        this.playDefeatEffect();
+        this.defeatRequied();
     }
     get isDefeat() { return this.hp <= 0; }
     get hpRatio() { return this.hp / this.maxHp };
@@ -1062,11 +1064,14 @@ class Player extends Mono {//プレイヤーキャラ
     constructor(bullets, scene) {
         super(new State(), new Move(), new Moji(), new Collision(), new Unit());
         const data = datas.player.data;
-        this.state.start(this.stateDefault.call(this, bullets, scene));
+        this.state.start(this.stateDefault.call(this, bullets));
         this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1, angle: 180 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.set(data, scene);
         this.unit.kocount = 0;
+        this.unit.onBanish=()=>{
+            this.state.start(this.stateDamagedInvincible());
+        }
     }
     maneuver() {
         if (!this.isExist) return;
@@ -1094,7 +1099,7 @@ class Player extends Mono {//プレイヤーキャラ
         ctx.fillStyle = 'yellow';
         ctx.fillRect(x + 31, y + 5, 10, 8);
     }
-    *stateDefault(bullets, scene) {
+    *stateDefault(bullets) {
         yield* waitForTime(0.5);
         this.unit.firing = false;
         const point = 100;
@@ -1113,6 +1118,14 @@ class Player extends Mono {//プレイヤーキャラ
             this.unit.firing = false;
             yield* waitForTime(0.125);
         }
+    }
+    *stateDamagedInvincible() {
+        this.invincible = true;
+        yield undefined;
+        this.color.blink(0.03);
+        yield* waitForTime(datas.player.damagedInvincibilityTime);
+        this.color.restore();
+        this.invincible = false;
     }
 }
 class Baddies extends Mono {//敵キャラのコンテナ
@@ -2089,10 +2102,11 @@ export const datas = {//ゲームデータ
         torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within], { defeatEffect: 'feather' }),
     },
     player: {
-        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 1, 0, '', undefined, { defeatEffect: 'star2' }),
+        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 999, 0, '', undefined, { defeatEffect: 'star2' }),
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
+        damagedInvincibilityTime: 1,
     },
     game: {
         highscoreListMax: 10
