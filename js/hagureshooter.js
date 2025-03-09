@@ -1013,8 +1013,10 @@ class Unit {//キャラ
     resetHp() {
         this.hp = this.maxHp;
     }
+    isBanish() {
+        return !this.invincible || this.hp > 0;
+    }
     banish(damage) {//ダメージを与える
-        if (this.invincible || this.hp == 0) return;
         this.hp = Math.max(this.hp - damage, 0);
         this.onBanish?.();
         if (this.hp > 0) return;        
@@ -1759,7 +1761,7 @@ class ScenePlay extends Mono {//プレイ画面
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
             targets.child.each((target) => {
-                if (!bullet.collision.hit(target)) return;
+                if (!bullet.collision.hit(target)||!target.unit.isBanish()) return;
                 target.color.flash('crimson');
                 shared.playdata.total.point += bullet.bullet.point;
                 bullet.remove();
