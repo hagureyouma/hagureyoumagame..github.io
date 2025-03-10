@@ -21,7 +21,6 @@
 {//やりたいことメモ
     //ハイスコアのローカルセーブ＆ロード
     //残像の色変更　HSV色空間とグラデーションマップがいる
-    //絵文字のパーティクル
 }
 'use strict';
 console.clear();
@@ -439,6 +438,7 @@ class Pos {//座標コンポーネント
     get rect() { return this._rect.set(this.left, this.top, this.width, this.height) }
 }
 class Move {//動作コンポーネント
+    static requieds=[];
     constructor() {
         this.ease = new Ease();
         this.reset();
