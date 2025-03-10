@@ -1014,12 +1014,12 @@ class Unit {//キャラ
         this.hp = this.maxHp;
     }
     isBanish() {
-        return !this.invincible || this.hp > 0;
+        return !this.invincible && this.hp > 0;
     }
     banish(damage) {//ダメージを与える
         this.hp = Math.max(this.hp - damage, 0);
         this.onBanish?.();
-        if (this.hp > 0) return;        
+        if (this.hp > 0) return;
         this.defeat();
     }
     _playEffect(name) {
@@ -1071,7 +1071,7 @@ class Player extends Mono {//プレイヤーキャラ
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.unit.set(data, scene);
         this.unit.kocount = 0;
-        this.unit.onBanish=()=>{
+        this.unit.onBanish = () => {
             this.state.start(this.stateDamagedInvincible());
         }
     }
@@ -1122,12 +1122,12 @@ class Player extends Mono {//プレイヤーキャラ
         }
     }
     *stateDamagedInvincible() {
-        this.invincible = true;
+        this.unit.invincible = true;
         yield undefined;
         this.color.blink(0.03);
         yield* waitForTime(datas.player.damagedInvincibilityTime);
         this.color.restore();
-        this.invincible = false;
+        this.unit.invincible = false;
     }
 }
 class Baddies extends Mono {//敵キャラのコンテナ
@@ -1761,7 +1761,8 @@ class ScenePlay extends Mono {//プレイ画面
     postUpdate() {
         const _bulletHitcheck = (bullet, targets) => {
             targets.child.each((target) => {
-                if (!bullet.collision.hit(target)||!target.unit.isBanish()) return;
+                if (!bullet.collision.hit(target)) return;
+                if (!target.unit.isBanish()) return;
                 target.color.flash('crimson');
                 shared.playdata.total.point += bullet.bullet.point;
                 bullet.remove();
@@ -1771,6 +1772,7 @@ class ScenePlay extends Mono {//プレイ画面
         //キャラの当たり判定
         this.baddies.child.each((baddie) => {
             if (!this.player.collision.hit(baddie)) return;
+            if (!this.player.unit.isBanish()) return;
             this.player.unit.banish(1);
         });
         //弾の当たり判定
@@ -1995,7 +1997,9 @@ class SceneCredit extends Mono {//クレジット画面
         const scrolltime = 3;
         while (true) {
             const header = new Label(text.credit, game.width * 0.5, game.height + (game.height * 0.25), { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 });
-            header.move.toForTime(game.width * 0.5, -(game.height * 0.25), 3);
+            header.addMix(new Move());
+            header.addMix(new OutOfScreenToRemove());
+            header.move.toForTime(game.width * 0.5, -(game.height * 0.25), 3);            
             this.child.add(header);
             yield waitForTime(1);
         }
