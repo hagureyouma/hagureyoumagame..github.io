@@ -26,6 +26,7 @@
 console.clear();
 //ゲームエンジンのクラス
 class Game {//ゲーム本体
+    stati
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
@@ -34,7 +35,7 @@ class Game {//ゲーム本体
         this.root = new Mono(new State(), new Child());
         this.input = new Input();
         this.time = this.delta = 0;
-        this.fpsBuffer = new Array(60).fill(0);
+        this.fpsBuffer = new Array(60).fill(0);        
     }
     get width() { return this.screenRect.width };
     get height() { return this.screenRect.height };
