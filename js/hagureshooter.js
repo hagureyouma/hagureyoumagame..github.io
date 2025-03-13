@@ -26,7 +26,10 @@
 console.clear();
 //ゲームエンジンのクラス
 class Game {//ゲーム本体
-    stati
+    
+    static{
+
+    }
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
