@@ -307,14 +307,15 @@ class Mono {//ゲームオブジェクト
     constructor(...args) {
         this.isExist = this.isActive = true;
         this.isRemoved = false;
+        this.mixClasses = new Set();
         this.mixs = [];
         this.childIndex = -1;
         this.remove;
-        for (const arg of args) {
-            if (Array.isArray(arg)) {
-                for (const mix of arg) this.addMix(mix);
-            } else {
-                this.addMix(arg);
+
+        for (const mixCtor of args) {
+            this.mixClasses.add(mixCtor);
+            for (const requiedMixCtor of mixCtor?.requied) {
+                this.mixClasses.add(new requiedMixCtor());
             }
         }
     }
