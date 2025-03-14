@@ -25,11 +25,7 @@
 'use strict';
 console.clear();
 //ゲームエンジンのクラス
-class Game {//ゲーム本体
-    
-    static{
-
-    }
+class Game {//ゲーム本体    
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
@@ -38,7 +34,7 @@ class Game {//ゲーム本体
         this.root = new Mono(new State(), new Child());
         this.input = new Input();
         this.time = this.delta = 0;
-        this.fpsBuffer = new Array(60).fill(0);        
+        this.fpsBuffer = new Array(60).fill(0);
     }
     get width() { return this.screenRect.width };
     get height() { return this.screenRect.height };
@@ -442,7 +438,7 @@ class Pos {//座標コンポーネント
     get rect() { return this._rect.set(this.left, this.top, this.width, this.height) }
 }
 class Move {//動作コンポーネント
-    static requieds=[];
+    static requieds = [];
     constructor() {
         this.ease = new Ease();
         this.reset();
@@ -2003,7 +1999,7 @@ class SceneCredit extends Mono {//クレジット画面
             const header = new Label(text.credit, game.width * 0.5, game.height + (game.height * 0.25), { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 });
             header.addMix(new Move());
             header.addMix(new OutOfScreenToRemove());
-            header.move.toForTime(game.width * 0.5, -(game.height * 0.25), 3);            
+            header.move.toForTime(game.width * 0.5, -(game.height * 0.25), 3);
             this.child.add(header);
             yield waitForTime(1);
         }
