@@ -307,16 +307,25 @@ class Mono {//ゲームオブジェクト
     constructor(...args) {
         this.isExist = this.isActive = true;
         this.isRemoved = false;
-        this.mixClasses = new Set();
+        this.mixClasses = new Map();
         this.mixs = [];
         this.childIndex = -1;
         this.remove;
 
         for (const mixCtor of args) {
-            this.mixClasses.add(mixCtor);
-            for (const requiedMixCtor of mixCtor?.requied) {
-                this.mixClasses.add(new requiedMixCtor());
-            }
+            this.addMixClasses(mixCtor);
+        }
+        for (const mixCtor of this.mixClasses.values()) {
+            this.mixs.add(new mixCtor());
+        }
+        this.mixs.sort((a, b) => a?.priority ?? 0 - b?.priority ?? 0);
+    }
+    addMixClasses(mixCtor) {
+        if (this.mixClasses.has(mixCtor.name)) return;
+        this.mixClasses.set(mixCtor.name, mixCtor);
+        for (const requiedMixCtor of mixCtor?.requied) {
+            if (this.mixClasses.has(requiedMixCtor.name)) continue;
+            this.mixClasses.set(requiedMixCtor.name, requiedMixCtor);
         }
     }
     addMix(mix, isBefore = false) {
