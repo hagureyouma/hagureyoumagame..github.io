@@ -1,20 +1,6 @@
 //ヨウマエンジン
 //by はぐれヨウマ
 'use strict';
-//Font Awsomeの文字コード
-export const EMOJI = Object.freeze({
-    GHOST: 'f6e2',
-    CAT: 'f6be',
-    CROW: 'f520',
-    HOUSE: 'e00d',
-    TREE: 'f1bb',
-    DOVE: 'f4ba',
-    POO: 'f2fe',
-    CROWN: 'f521',
-    FEATHER: 'f52d',
-    STAR: 'f005',
-    HEART: 'f004',
-});
 class cfgDefault {//エンジン設定の初期値
     constructor() {
         this.layer = ['effect', 'ui'];
@@ -42,6 +28,20 @@ class cfgDefault {//エンジン設定の初期値
     }
 };
 export let cfg = new cfgDefault();//エンジン設定
+//Font Awsomeの文字コード
+export const EMOJI = Object.freeze({
+    GHOST: 'f6e2',
+    CAT: 'f6be',
+    CROW: 'f520',
+    HOUSE: 'e00d',
+    TREE: 'f1bb',
+    DOVE: 'f4ba',
+    POO: 'f2fe',
+    CROWN: 'f521',
+    FEATHER: 'f52d',
+    STAR: 'f005',
+    HEART: 'f004',
+});
 class Game {//エンジン本体
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
@@ -130,6 +130,7 @@ class Layers {//レイヤー管理
         this.layers = new Map();
         this.width = width;
         this.height = height;
+        //レイヤーのCanvasのコンテナ
         const div = this.div = document.createElement('div');
         div.style.position = 'relative';
         div.style.display = 'block';
@@ -137,13 +138,14 @@ class Layers {//レイヤー管理
         div.style.height = `${height}px`;
         div.style.margin = '1rem auto';
         document.body.insertAdjacentElement('beforebegin', div);
+        //デフォルトのレイヤーを作成
         this.add('bg');
-        this.add('main');
         const bg = this.get('bg');
         bg.isUpdate = false;
         const bgctx = bg.getContext();
         bgctx.fillStyle = 'black';
         bgctx.fillRect(0, 0, width, height);
+        this.add('main');
     }
     before() { for (const layer of this.layers.values()) layer.before(); }
     after() { for (const layer of this.layers.values()) layer.after(); }
@@ -453,7 +455,7 @@ export class Child {//子持ちコンポーネント
         let obj;
         if (!(name in this.reserves)) this.reserves[name] = [];
         if (this.reserves[name].length === 0) {
-            obj = this.createObject(name);
+            obj = this._createObject(name);
         } else {
             obj = this.objs[this.reserves[name].pop()];
         }
@@ -461,7 +463,7 @@ export class Child {//子持ちコンポーネント
         this.liveCount++;
         return obj;
     }
-    createObject(name) {
+    _createObject(name) {
         const obj = this.creator[name]();
         obj.childIndex = this.objs.length;
         obj.remove = () => {

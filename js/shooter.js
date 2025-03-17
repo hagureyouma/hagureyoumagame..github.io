@@ -25,7 +25,7 @@
 'use strict';
 console.clear();
 
-import{cfg,EMOJI,game,Util,Mono,State,waitForFrag,waitForTime,waitForTimeOrFrag,Child,Move,Anime,Ease,Guided,Collision,Brush,Tofu,Moji,Label,Particle,Gauge,OutOfRangeToRemove,OutOfScreenToRemove,Menu,Watch}from  "./youma.js";
+import { cfg, EMOJI, game, Util, Mono, State, waitForFrag, waitForTime, waitForTimeOrFrag, Child, Move, Anime, Ease, Guided, Collision, Brush, Tofu, Moji, Label, Particle, Gauge, OutOfRangeToRemove, OutOfScreenToRemove, Menu, Watch } from "./youma.js";
 
 class Unit {//ユニットコンポーネント
     static requieds = State;
@@ -40,7 +40,7 @@ class Unit {//ユニットコンポーネント
     set(data, scene) {
         this.reset();
         this.scene = scene;
-        this._createRequiedState();
+        this.owner.state.defeat = this.stateDefeat.bind(this);
         if (!data) return;
         this.data = data;
         this.hp = this.maxHp = data.hp;
@@ -55,8 +55,10 @@ class Unit {//ユニットコンポーネント
     }
     banish(damage) {
         this.hp = Math.max(this.hp - damage, 0);
-        this.onBanish?.();
-        if (this.hp > 0) return;
+        if (this.hp > 0) {
+            this.onBanish?.();
+            return;
+        }
         this.defeat();
     }
     playEffect(name, x, y) {
@@ -72,7 +74,7 @@ class Unit {//ユニットコンポーネント
     playDefeatEffect() {
         this.playEffect(this.data.defeatEffect === '' ? datas.unit.defaultDefeatEffect : this.data.defeatEffect, this.owner.pos.linkX, this.owner.pos.linkY);
     }
-    spawnRequied() {
+    spawnRequied() {//出現時に呼び出す
         this.playSpawnEffect();
         return this.data.size * 0.005;
     }
@@ -80,16 +82,11 @@ class Unit {//ユニットコンポーネント
         const state = this.owner.state;
         state.start(state.defeat(), 'defeat');
     }
-    defeatRequied() {
+    defeatRequied() {//撃破時に呼び出す
         shared.playdata.total.point += this.point;
         shared.playdata.total.ko += this.kocount;
         this.onDefeat?.();
         this.owner.remove();
-    }
-    _createRequiedState() {
-        const owner = this.owner;
-        const unit = this;
-        owner.state.defeat ??= this.stateDefeat.bind(this);
     }
     *stateDefeat() {
         this.playDefeatEffect();
@@ -755,8 +752,10 @@ class ScenePlay extends Mono {//プレイ画面
     constructor() {
         super(State, Child);
         this.elaps = 0;
-        //キャラ
+        //自機
         this.child.add(this.playerside = new Mono(Child));
+        this.playerside.child.addCreator('player', () => new Player());
+        //敵キャラ
         this.child.add(this.baddies = new Baddies());
         //弾
         this.child.add(this.playerbullets = new BulletBox());
@@ -770,6 +769,9 @@ class ScenePlay extends Mono {//プレイ画面
         this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
         //this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2, { align: 2 }));
         this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${shared.playdata.total.stage}`, game.width - 2, 2, { align: 2 }));
+        //残機表示
+        this.ui.child.add(this.remains = new Mono(Child));
+        this.remains.child.addCreator('remains', () => { return new Label(); });
         //ボスのHPゲージ
         const gauge = this.bossHPgauge = new Gauge();
         gauge.pos.set(game.width * 0.5, 30, game.width * 0.9, 10);
@@ -788,7 +790,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.newGame();
     }
     get isClear() { return !this.state.isEnable(this.stateStageId); }
-    get isFailure() { return this.player.unit.isDefeat }
+    get isFailure() { return shared.playdata.total.remain === 0; }
     *showTelop(text, time, blink = 0) {
         this.telop.moji.set(text);
         this.telop.color.blink(blink);
@@ -800,6 +802,12 @@ class ScenePlay extends Mono {//プレイ画面
         this.player.maneuver();//プレイヤーの入力受付を優先するのでここで受け付ける
     }
     postUpdate() {
+        //キャラの当たり判定
+        this.baddies.child.each((baddie) => {
+            if (!this.player.collision.hit(baddie)) return;
+            if (!this.player.unit.isBanish()) return;
+            this.player.unit.banish(1);
+        });
         const _bulletHitcheck = (bullet, targets) => {
             targets.child.each((target) => {
                 if (!bullet.collision.hit(target)) return;
@@ -810,12 +818,6 @@ class ScenePlay extends Mono {//プレイ画面
                 target.unit.banish(bullet.bullet.damage);
             });
         }
-        //キャラの当たり判定
-        this.baddies.child.each((baddie) => {
-            if (!this.player.collision.hit(baddie)) return;
-            if (!this.player.unit.isBanish()) return;
-            this.player.unit.banish(1);
-        });
         //弾の当たり判定
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
@@ -916,11 +918,23 @@ class ScenePlay extends Mono {//プレイ画面
         shared.playdata.total = new scoreData(shared.playdata.backup);
         this.resetStage();
     }
-    resetStage() {
+    playerSpawn() {
         this.player?.remove();
-        this.playerside.child.add(this.player = new Player(this.playerbullets, this));
+        this.player = this.playerside.child.pool('player');
+        this.player.unit.onDefeat = () => {
+            shared.playdata.total.remains--;
+            this.applyRemains();
+            this.state.start(function* () {
+                yield* waitForTime(1);
+                this.playerSpawn();
+            });
+        }
         //this.player.unit.invincible = true;//無敵
         this.playerbullets.child.removeAll();
+        this.applyRemains();
+    }
+    resetStage() {
+        this.playerSpawn();
         this.baddies.child.removeAll();
         this.baddiesbullets.child.removeAll();
         this.effect.child.removeAll();
@@ -929,6 +943,15 @@ class ScenePlay extends Mono {//プレイ画面
         game.layers.get('effect').clearBlur();
         this.telop.isExist = false;
         this.bossHPgauge.remove?.();
+    }
+    applyRemains() {
+        this.remains.child.removeAll();
+        if (shared.playdata.total.remains === 0) return;
+        const data = this.player.unit.data;
+        for (let i = 0; i < shared.playdata.total.remains; i++) {
+            const obj = this.remains.child.pool('remains');
+            obj.moji.set(Util.parseUnicode(data.char), { x: (cfg.fontSize.normal * 1.25) * i, y: (cfg.fontSize.normal * 1.25), color: data.color, font: cfg.font.emoji.name, align: 0, valign: 0 });
+        }
     }
     isNewRecord() {
         shared.highscores.push(shared.playdata.total);
@@ -1143,14 +1166,15 @@ const datas = {//ゲームデータ
         torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within], { defeatEffect: 'feather' }),
     },
     player: {
-        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 999, 0, '', undefined, { defeatEffect: 'star2' }),
+        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 2, 0, '', undefined, { defeatEffect: 'star2' }),
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
         damagedInvincibilityTime: 1,
     },
     game: {
-        highscoreListMax: 10
+        highscoreListMax: 10,
+        defaultRemains: 3
     }
 };
 class saveData {//セーブデータ
@@ -1168,6 +1192,7 @@ class scoreData {//スコアデータ
         this.time = from?.time || 0;
         this.point = from?.point || 0;
         this.ko = from?.ko || 0;
+        this.remains = from?.remains || datas.game.defaultRemains;
     }
 }
 let shared//セーブデータの変数
