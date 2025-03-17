@@ -1,29 +1,8 @@
+//ヨウマエンジン
+//by はぐれヨウマ
 'use strict';
-const cfg = {//ゲームの設定
-    layer: ['effect', 'ui'],
-    font: {
-        default: { name: 'Kaisei Decol', url: 'https://fonts.googleapis.com/css2?family=kaisei+decol&display=swap', custom: false },
-        emoji: { name: 'FontAwesome', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', custom: true }
-    },
-    fontSize: {
-        normal: 20,
-        medium: 30,
-        large: 35,
-        big: 40,
-    },
-    theme: {
-        text: '#ffffff',
-        highlite: 'yellow'
-    },
-    input: {
-        repeatWaitFirst: 0.25,
-        repeatWait: 0.125,
-    },
-    saveData: {
-        name: 'saveData'
-    }
-}
-const EMOJI = Object.freeze({//Font Awesomeの絵文字のUnicode
+//Font Awsomeの文字コード
+export const EMOJI = Object.freeze({
     GHOST: 'f6e2',
     CAT: 'f6be',
     CROW: 'f520',
@@ -36,7 +15,34 @@ const EMOJI = Object.freeze({//Font Awesomeの絵文字のUnicode
     STAR: 'f005',
     HEART: 'f004',
 });
-class Game {//ゲーム本体    
+class cfgDefault {//エンジン設定の初期値
+    constructor() {
+        this.layer = ['effect', 'ui'];
+        this.font = {
+            default: { name: 'Kaisei Decol', url: 'https://fonts.googleapis.com/css2?family=kaisei+decol&display=swap', custom: false },
+            emoji: { name: 'FontAwesome', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', custom: true }
+        }
+        this.fontSize = {
+            normal: 20,
+            medium: 30,
+            large: 35,
+            big: 40,
+        };
+        this.theme = {
+            text: '#ffffff',
+            highlite: 'yellow'
+        }
+        this.input = {
+            repeatWaitFirst: 0.25,
+            repeatWait: 0.125,
+        }
+        this.saveData = {
+            name: 'saveData'
+        }
+    }
+};
+export let cfg = new cfgDefault();//エンジン設定
+class Game {//エンジン本体
     constructor(width = 360, height = 480) {
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
@@ -47,8 +53,8 @@ class Game {//ゲーム本体
         this.time = this.delta = 0;
         this.fpsBuffer = new Array(60).fill(0);
     }
-    get width() { return this.screenRect.width };
-    get height() { return this.screenRect.height };
+    get width() { return this.screenRect.width; };
+    get height() { return this.screenRect.height; };
     start(assets, create) {
         (async () => {
             const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
@@ -57,7 +63,7 @@ class Game {//ゲーム本体
                 wf.src = 'https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js';
                 wf.onload = resolve;
                 document.head.appendChild(wf);
-            })
+            });
             const fonts = [];
             for (const asset of [...assets]) {
                 if (typeof asset === 'string') {
@@ -112,7 +118,7 @@ class Game {//ゲーム本体
     isOutOfRange = (rect) => !this.rangeRect.isIntersect(rect);
     isWithinRange = (rect) => !this.rangeRect.isOverflow(rect);
     setRange = (range) => this.rangeRect.set(-range, -range, this.width + range + range, this.height + range + range);
-    get range() { return Math.abs(this.rangeRect.x) };
+    get range() { return Math.abs(this.rangeRect.x); };
     get fps() { return Math.floor(1 / Util.average(this.fpsBuffer)); }
     get sec() { return this.time / 1000; }
     save(data, key) { Util.save(data, key); }
@@ -132,7 +138,7 @@ class Layers {//レイヤー管理
         div.style.margin = '1rem auto';
         document.body.insertAdjacentElement('beforebegin', div);
         this.add('bg');
-        this.add('main')
+        this.add('main');
         const bg = this.get('bg');
         bg.isUpdate = false;
         const bgctx = bg.getContext();
@@ -146,12 +152,12 @@ class Layers {//レイヤー管理
             const layer = new Layer(this.width, this.height);
             this.div.appendChild(layer.canvas);
             this.layers.set(name, layer);
-        }
+        };
         if (!Array.isArray(names)) {
             create(names);
             return;
         }
-        for (const name of names) create(name)
+        for (const name of names) create(name);
     }
     get = (name) => this.layers.get(name);
 }
@@ -163,7 +169,7 @@ class Layer {//レイヤー
         canvas.style.position = 'absolute';
         this.isUpdate = true;
         this.blur;
-        this.isPauseBlur = false
+        this.isPauseBlur = false;
     }
     getContext = () => this.canvas.getContext('2d');
     getBlurContext = () => this.blur.getContext('2d');
@@ -190,7 +196,7 @@ class Layer {//レイヤー
         ctx.drawImage(this.canvas, 0, 0);
     }
 }
-class Input {//ボタン入力
+class Input {//入力
     constructor() {
         this.nameIndex = new Map();
         this.keyIndex = new Map();
@@ -213,7 +219,7 @@ class Input {//ボタン入力
             const i = this.keyIndex.get(e.key);
             if (i === undefined) return;
             this.keyData[i].buffer = frag;
-        }
+        };
     }
     update() {
         for (let i = 0; i < this.keyData.length; i++) {
@@ -233,10 +239,6 @@ class Input {//ボタン入力
                     }
                 }
             }
-            // for (let i = 0; i < pad.buttons.length; i++) {
-            //     if(!pad.buttons[i].pressed)continue;
-            //     console.log(`${i}`);
-            // }
         }
     }
     keybind(name, key, { button = -1, axes = -1 } = {}) {
@@ -249,7 +251,7 @@ class Input {//ボタン入力
     isPress = (name) => this.keyData[this.nameIndex.get(name)].current && !this.keyData[this.nameIndex.get(name)].before;
     isUp = (name) => !this.keyData[this.nameIndex.get(name)].current && this.keyData[this.nameIndex.get(name)].before;
 }
-class Util {//便利メソッド詰め合わせ
+export class Util {//小物
     static naname = 0.71;
     static radian = Math.PI / 180;
     static degree = 180 / Math.PI;
@@ -294,7 +296,7 @@ class Util {//便利メソッド詰め合わせ
     static randomArray = (range, length) => Util.shiffledArray(range).slice(0, length);
     static isGenerator = (obj) => obj && typeof obj.next === 'function' && typeof obj.throw === 'function';
     static isIterable = (obj) => obj && typeof obj[Symbol.iterator] === 'function';
-    static isImageFile = (file) => /\.(jpg|jpeg|png|gif)$/i.test(file)
+    static isImageFile = (file) => /\.(jpg|jpeg|png|gif)$/i.test(file);
     static save(item, key) { localStorage.setItem(key, JSON.stringify(item)); }
     static load(key) { return JSON.parse(localStorage.getItem(key)); }
     static deleteSave(key) { localStorage.removeItem(key); }
@@ -310,12 +312,12 @@ class Rect {//矩形
         this.height = height;
         return this;
     }
-    get right() { return this.x + this.width }
-    get bottom() { return this.y + this.height }
+    get right() { return this.x + this.width; }
+    get bottom() { return this.y + this.height; }
     isIntersect = (rect) => rect.right > this.x && this.right > rect.x && rect.bottom > this.y && this.bottom > rect.y;
     isOverflow = (rect) => rect.x < this.x || rect.right > this.right || rect.y < this.y || rect.bottom > this.bottom;
 }
-class Mono {//ゲームオブジェクト
+export class Mono {//ゲームオブジェクト
     constructor(...args) {
         this.isExist = this.isActive = true;
         this.isRemoved = false;
@@ -364,7 +366,7 @@ class Mono {//ゲームオブジェクト
     }
     draw() { };
 }
-class State {//ステートコンポーネント
+export class State {//状態コンポーネント
     constructor() {
         this.generators = new Map();
     }
@@ -407,7 +409,11 @@ class State {//ステートコンポーネント
         });
     }
 }
-function* waitForTime(time) {//タイマー
+export function* waitForFrag(func) {//関数の戻り値がtrueになるまで待機ステート
+    while (!func()) yield undefined;
+    return true;
+}
+export function* waitForTime(time) {//指定した時間まで待機ステート
     time -= game.delta;
     while (time > 0) {
         time -= game.delta;
@@ -415,11 +421,7 @@ function* waitForTime(time) {//タイマー
     }
     return true;
 }
-function* waitForFrag(func) {//trueが返ってくるまで待機
-    while (!func()) yield undefined;
-    return true;
-}
-function* waitForTimeOrFrag(time, func) {//中断付きタイマー
+export function* waitForTimeOrFrag(time, func) {//指定した時間が経つか関数の戻り値がtrueになるまで待機ステート
     time -= game.delta;
     while (time > 0 && !func()) {
         time -= game.delta;
@@ -427,7 +429,137 @@ function* waitForTimeOrFrag(time, func) {//中断付きタイマー
     }
     return true;
 }
-class Pos {//座標コンポーネント
+export class Child {//子持ちコンポーネント
+    static grave = new Set();
+    static clean() {
+        if (Child.grave.size === 0) return;
+        for (const child of Child.grave) {
+            child.objs = child.objs.filter((obj) => !obj.isRemoved);
+        }
+        Child.grave.clear();
+    }
+    constructor() {
+        this.creator = {};
+        this.objs = [];
+        this.reserves = {};
+        this.liveCount = 0;
+        this.drawlayer = '';
+    }
+    reset() { }
+    addCreator(name, func) {
+        this.creator[name] = func;
+    }
+    pool(name) {
+        let obj;
+        if (!(name in this.reserves)) this.reserves[name] = [];
+        if (this.reserves[name].length === 0) {
+            obj = this.createObject(name);
+        } else {
+            obj = this.objs[this.reserves[name].pop()];
+        }
+        obj.isExist = true;
+        this.liveCount++;
+        return obj;
+    }
+    createObject(name) {
+        const obj = this.creator[name]();
+        obj.childIndex = this.objs.length;
+        obj.remove = () => {
+            if (!obj.isExist) return;
+            obj.isExist = false;
+            obj.resetMix();
+            this.reserves[name].push(obj.childIndex);
+            this.liveCount--;
+        };
+        this.objs.push(obj);
+        return obj;
+    }
+    add(obj) {
+        obj.remove = () => {
+            if (!obj.isExist) return;
+            obj.isExist = false;
+            obj.isRemoved = true;
+            Child.grave.add(this);
+        };
+        this.objs.push(obj);
+    }
+    pop() {
+        this.objs.pop();
+    }
+    removeAll() {
+        for (const obj of this.objs) obj.remove();
+    }
+    update() {
+        for (const obj of this.objs) obj.baseUpdate();
+    }
+    draw(ctx) {
+        let currentCtx = this.drawlayer !== '' ? game.layers.get(this.drawlayer).getContext() : ctx;
+        for (const obj of this.objs) obj.baseDraw(currentCtx);
+    }
+    each(func) {
+        for (const obj of this.objs) {
+            if (obj.isExist) func(obj);
+        }
+    }
+    get count() { return this.objs.length; };
+}
+export class Color {//色コンポーネント
+    constructor() {
+        this.reset();
+    }
+    reset() {
+        this.setColor(cfg.theme.text);
+        this.alpha = this.baseAlpha = 1;
+        this.func = undefined;
+    }
+    setColor(color) {
+        this.value = this.baseColor = color;
+    }
+    setAlpha(alpha) {
+        this.alpha = this.baseAlpha = alpha;
+    }
+    restore() {
+        this.value = this.baseColor;
+        this.alpha = this.baseAlpha;
+        this.func = undefined;
+    }
+    update = () => this.func?.();
+    flash(color) {
+        if (this.func) this.restore();
+        this.baseColor = this.value;
+        this.value = color;
+        let timer = 0.02;
+        this.func = () => {
+            if (timer <= 0) {
+                this.restore();
+                return;
+            }
+            timer -= game.delta;
+        };
+    }
+    blink(interval) {
+        if (interval <= 0) {
+            this.restore();
+            return;
+        }
+        if (this.func) this.restore();
+        this.basealpha = this.alpha;
+        let timer = interval;
+        this.func = () => {
+            if (timer <= 0) {
+                timer = interval;
+                this.alpha = this.alpha === 1 ? 0 : 1;
+                return;
+            }
+            timer -= game.delta;
+        };
+    }
+    applyContext(ctx) {
+        ctx.fillStyle = this.value;
+        ctx.globalAlpha = this.alpha;
+    }
+}
+export class Pos {//座標コンポーネント
     constructor() {
         this._rect = new Rect();
         this.reset();
@@ -435,7 +567,7 @@ class Pos {//座標コンポーネント
     reset() {
         this.set(0, 0, 0, 0);
         this.angle = 0;
-        this.align = this.valign = 0;//align&valign left top=0,center midle=1,right bottom=2
+        this.align = this.valign = 0; //align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
         this.parent = undefined;
     }
@@ -443,19 +575,19 @@ class Pos {//座標コンポーネント
         Object.assign(this, { x, y, width, height, halfWidth: width * 0.5, halfHeight: height * 0.5 });
         return this;
     }
-    get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0) }
-    get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0) }
-    get alignCollect() { return this.align * this.halfWidth }
-    get valignCollect() { return this.valign * this.halfHeight }
-    get left() { return Math.floor(this.linkX - this.alignCollect) }
-    get top() { return Math.floor(this.linkY - this.valignCollect) }
+    get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0); }
+    get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0); }
+    get alignCollect() { return this.align * this.halfWidth; }
+    get valignCollect() { return this.valign * this.halfHeight; }
+    get left() { return Math.floor(this.linkX - this.alignCollect); }
+    get top() { return Math.floor(this.linkY - this.valignCollect); }
     get right() { return this.left + this.width; }
     get bottom() { return this.top + this.height; }
     get center() { return this.left + this.halfWidth; }
     get middle() { return this.top + this.halfHeight; }
-    get rect() { return this._rect.set(this.left, this.top, this.width, this.height) }
+    get rect() { return this._rect.set(this.left, this.top, this.width, this.height); }
 }
-class Move {//動作コンポーネント
+export class Move {//移動コンポーネント
     static requieds = Pos;
     constructor() {
         this.ease = new Ease();
@@ -538,23 +670,12 @@ class Move {//動作コンポーネント
     get isActive() { return this.ease.isActive; }
     get percentage() { return this.ease.percentage; }
 }
-class OutOfScreenToRemove {//画面外に出ると削除コンポーネント
+export class Anime extends Move {//アニメコンポーネント
     constructor() {
-        return this;
-    }
-    update() {
-        if (game.isOutOfScreen(this.owner.pos.rect)) this.owner.remove();
+        return super();
     }
 }
-class OutOfRangeToRemove {//範囲外に出ると削除コンポーネント
-    constructor() {
-        return this;
-    }
-    update() {
-        if (game.isOutOfRange(this.owner.pos.rect)) this.owner.remove();
-    }
-}
-class Ease {//イージング
+export class Ease {//イージング
     static liner = (t) => t;
     static sinein = (t) => 1 - Math.cos(t * Math.PI / 2);
     static sineout = (t) => Math.sin(t * Math.PI / 2);
@@ -592,24 +713,19 @@ class Ease {//イージング
             this.time = 0;
             this.isDelta = this.endToDelta;
         }
-        return (ce * this.range) + (Math.sign(ce) * this.ofs * t)
+        return (ce * this.range) + (Math.sign(ce) * this.ofs * t);
     }
     get isActive() { return this.time > 0 || this.isDelta; }
     get percentage() { return this.elaps % 1; }
 }
-class Anime extends Move {//アニメコンポーネント
-    constructor() {
-        return super();
-    }
-}
-class Guided {//ホーミングコンポーネント
+export class Guided {//追尾移動コンポーネント
     static requieds = Pos;
     constructor() {
         this.reset();
     }
     reset() {
         this.target = undefined;
-        this.aimSpeed = 0
+        this.aimSpeed = 0;
     }
     set(target, aimSpeed, firstSpeed, accelTime) {
         this.target = target;
@@ -626,7 +742,7 @@ class Guided {//ホーミングコンポーネント
         move.vy = y;
     }
 }
-class Collision {//当たり判定コンポーネント
+export class Collision {//当たり判定コンポーネント
     static requieds = Pos;
     constructor() {
         this._rect = new Rect();
@@ -639,7 +755,7 @@ class Collision {//当たり判定コンポーネント
         const pos = this.owner.pos;
         return this._rect.set(Math.floor(pos.linkX - pos.align * this._rect.width * 0.5), Math.floor(pos.linkY - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
-    hit = (obj) => this.isEnable && this.rect.isIntersect(obj.collision.rect);//速度が矩形より大きいとすり抜けるよ
+    hit = (obj) => this.isEnable && this.rect.isIntersect(obj.collision.rect); //速度が矩形より大きいとすり抜けるよ
     draw(ctx) {
         if (!this.isVisible) return;
         ctx.fillStyle = '#ff000080';
@@ -647,137 +763,46 @@ class Collision {//当たり判定コンポーネント
         ctx.fillRect(r.x, r.y, r.width, r.height);
     }
 }
-class Child {//コンテナコンポーネント    
-    static grave = new Set();
-    static clean() {
-        if (Child.grave.size === 0) return;
-        for (const child of Child.grave) {
-            child.objs = child.objs.filter((obj) => !obj.isRemoved);
-        }
-        Child.grave.clear();
-    }
-    constructor() {
-        this.creator = {};
-        this.objs = [];
-        this.reserves = {};
-        this.liveCount = 0;
-        this.drawlayer = '';
-    }
-    reset() { }
-    addCreator(name, func) {
-        this.creator[name] = func;
-    }
-    pool(name) {//オブジェクトプール（オブジェクトを再利用する）
-        let obj;
-        if (!(name in this.reserves)) this.reserves[name] = [];
-        if (this.reserves[name].length === 0) {
-            obj = this.createObject(name);
-        } else {
-            obj = this.objs[this.reserves[name].pop()];
-        }
-        obj.isExist = true;
-        this.liveCount++;
-        return obj;
-    }
-    createObject(name) {
-        const obj = this.creator[name]();
-        obj.childIndex = this.objs.length;
-        obj.remove = () => {
-            if (!obj.isExist) return;
-            obj.isExist = false;
-            obj.resetMix();
-            this.reserves[name].push(obj.childIndex);
-            this.liveCount--;
-        }
-        this.objs.push(obj);
-        return obj;
-    }
-    add(obj) {//プールしないオブジェクト用　removeすると削除リストに登録されて、フレームの終わりにまとめて削除される
-        obj.remove = () => {
-            if (!obj.isExist) return;
-            obj.isExist = false;
-            obj.isRemoved = true;
-            Child.grave.add(this);
-        }
-        this.objs.push(obj);
-    }
-    pop() {
-        this.objs.pop()
-    }
-    removeAll() {
-        for (const obj of this.objs) obj.remove();
-    }
-    update() {
-        for (const obj of this.objs) obj.baseUpdate();
-    }
-    draw(ctx) {
-        let currentCtx = this.drawlayer !== '' ? game.layers.get(this.drawlayer).getContext() : ctx;
-        for (const obj of this.objs) obj.baseDraw(currentCtx);
-    }
-    each(func) {
-        for (const obj of this.objs) {
-            if (obj.isExist) func(obj);
-        }
-    }
-    get count() { return this.objs.length };
-}
-class Color {//色コンポーネント
+export class Brush {//描画コンポーネント
+    static requieds = [Pos, Color];
+    static rad = Math.PI * 2;
     constructor() {
         this.reset();
     }
     reset() {
-        this.setColor(cfg.theme.text);
-        this.alpha = this.baseAlpha = 1;
-        this.func = undefined;
+        this.rect();
     }
-    setColor(color) {
-        this.value = this.baseColor = color;
+    rect() {
+        this.drawer = (ctx, pos) => {
+            ctx.fillRect(pos.left, pos.top, pos.width, pos.height);
+        };
     }
-    setAlpha(alpha) {
-        this.alpha = this.baseAlpha = alpha;
+    circle() {
+        this.drawer = (ctx, pos) => {
+            ctx.beginPath();
+            ctx.arc(pos.linkX, pos.linkY, pos.width * 0.5, 0, Brush.rad);
+            ctx.fill();
+        };
     }
-    restore() {
-        this.value = this.baseColor;
-        this.alpha = this.baseAlpha;
-        this.func = undefined;
-    }
-    update = () => this.func?.();
-    flash(color) {
-        if (this.func) this.restore();
-        this.baseColor = this.value;
-        this.value = color;
-        let timer = 0.02;
-        this.func = () => {
-            if (timer <= 0) {
-                this.restore();
-                return;
-            }
-            timer -= game.delta;
-        }
-    }
-    blink(interval) {
-        if (interval <= 0) {
-            this.restore();
-            return;
-        }
-        if (this.func) this.restore();
-        this.basealpha = this.alpha;
-        let timer = interval;
-        this.func = () => {
-            if (timer <= 0) {
-                timer = interval;
-                this.alpha = this.alpha === 1 ? 0 : 1;
-                return;
-            }
-            timer -= game.delta;
-        }
-    }
-    applyContext(ctx) {
-        ctx.fillStyle = this.value;
-        ctx.globalAlpha = this.alpha;
+    draw(ctx) {
+        ctx.save();
+        this.owner.color.applyContext(ctx);
+        this.drawer(ctx, this.owner.pos);
+        ctx.restore();
     }
 }
-class Moji {//文字表示コンポーネント
+export class Tofu extends Mono {//四角型描画
+    constructor() {
+        super(Brush);
+    }
+    set(x, y, width, height, color, alpha) {
+        this.pos.set(x, y, width, height);
+        this.color.setColor(color);
+        this.color.alpha = alpha;
+        return this;
+    }
+}
+export class Moji {//文字コンポーネント
     static requieds = [Pos, Color];
     constructor() {
         this.reset();
@@ -805,7 +830,7 @@ class Moji {//文字表示コンポーネント
         pos.valign = valign;
         pos.angle = angle;
     }
-    get getText() { return typeof this.text === 'function' ? this.text() : this.text };
+    get getText() { return typeof this.text === 'function' ? this.text() : this.text; };
     draw(ctx) {
         ctx.save();
         const pos = this.owner.pos;
@@ -818,76 +843,13 @@ class Moji {//文字表示コンポーネント
         ctx.restore();
     }
 }
-class Label extends Mono {//文字表示
+export class Label extends Mono {//文字
     constructor(text, x, y, { size = cfg.fontSize.normal, color = cfg.theme.text, font = cfg.font.default.name, weight = 'normal', align = 0, valign = 0 } = {}) {
         super(Moji);
         this.moji.set(text, { x, y, size, color, font, weight, align, valign });
     }
 }
-class Brush {//図形描画コンポーネント
-    static requieds = [Pos, Color];
-    static rad = Math.PI * 2;
-    constructor() {
-        this.reset();
-    }
-    reset() {
-        this.rect();
-    }
-    rect() {
-        this.drawer = (ctx, pos) => {
-            ctx.fillRect(pos.left, pos.top, pos.width, pos.height);
-        }
-    }
-    circle() {
-        this.drawer = (ctx, pos) => {
-            ctx.beginPath();
-            ctx.arc(pos.linkX, pos.linkY, pos.width * 0.5, 0, Brush.rad);
-            ctx.fill();
-        }
-    }
-    draw(ctx) {
-        ctx.save();
-        this.owner.color.applyContext(ctx);
-        this.drawer(ctx, this.owner.pos);
-        ctx.restore();
-    }
-}
-class Tofu extends Mono {//図形描画
-    constructor() {
-        super(Brush);
-    }
-    set(x, y, width, height, color, alpha) {
-        this.pos.set(x, y, width, height);
-        this.color.setColor(color);
-        this.color.alpha = alpha;
-        return this;
-    }
-}
-class Gauge extends Mono {//ゲージ
-    constructor() {
-        super(Pos);
-        this.color = '';
-        this.border = 2;
-        this.max = 0;
-        this.watch;
-        this.pos.width = 100;
-        this.pos.height = 10;
-    }
-    draw(ctx) {
-        ctx.save();
-        ctx.fillStyle = this.color;
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = this.border;
-        const pos = this.pos;
-        const x = pos.left;
-        const y = pos.top;
-        const b = this.border + 1;
-        ctx.strokeRect(x, y, pos.width, pos.height);
-        ctx.fillRect(x + b, y + b, (pos.width - b * 2) * (this.watch?.() / this.max), pos.height - (b * 2));
-        ctx.restore();
-    }
-}
-class Particle extends Mono {//パーティクル
+export class Particle extends Mono {//パーティクル
     static BrushParticleName = `${Particle.name}${Brush.name}`;
     static MojiParticleName = `${Particle.name}${Moji.name}`;
     constructor() {
@@ -897,7 +859,7 @@ class Particle extends Mono {//パーティクル
             t.update = () => {
                 if (!t.move.isActive) t.remove();
                 t.color.alpha = 1 - t.move.percentage;
-            }
+            };
             return t;
         });
         this.child.addCreator(Particle.MojiParticleName, () => {
@@ -905,11 +867,11 @@ class Particle extends Mono {//パーティクル
             t.update = () => {
                 if (!t.move.isActive) t.remove();
                 t.color.alpha = 1 - t.move.percentage;
-            }
+            };
             return t;
         });
     }
-    emittCircle(count, distance, time, size, color, x, y, isConverge = false, options = {}) {//拡散
+    emittCircle(count, distance, time, size, color, x, y, isConverge = false, options = {}) {
         const { emoji: emoji = undefined, angle = 0, isRandomAngle = false, rotate = 0 } = options;
         const deg = 360 / count;
         const degOffset = 90;
@@ -941,7 +903,63 @@ class Particle extends Mono {//パーティクル
         }
     }
 }
-class Menu extends Mono {//メニュー
+export class Gauge extends Mono {//ゲージ
+    constructor() {
+        super(Pos);
+        this.color = '';
+        this.border = 2;
+        this.max = 0;
+        this.watch;
+        this.pos.width = 100;
+        this.pos.height = 10;
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = this.border;
+        const pos = this.pos;
+        const x = pos.left;
+        const y = pos.top;
+        const b = this.border + 1;
+        ctx.strokeRect(x, y, pos.width, pos.height);
+        ctx.fillRect(x + b, y + b, (pos.width - b * 2) * (this.watch?.() / this.max), pos.height - (b * 2));
+        ctx.restore();
+    }
+}
+export class Watch extends Mono {//変数の値を表示
+    constructor() {
+        super(Pos, Child);
+        this.child.drawlayer = 'ui';
+        this.child.addCreator('label', () => new Label());
+    }
+    clear() {
+        this.child.removeAll();
+    }
+    add(watch) {
+        const l = this.child.pool('label');
+        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5) });
+    }
+}
+export const game = new Game();//ゲームのインスタンス
+//以下はgameに依存
+export class OutOfScreenToRemove {//画面外に出ると削除コンポーネント
+    constructor() {
+        return this;
+    }
+    update() {
+        if (game.isOutOfScreen(this.owner.pos.rect)) this.owner.remove();
+    }
+}
+export class OutOfRangeToRemove {//範囲外に出ると削除コンポーネント
+    constructor() {
+        return this;
+    }
+    update() {
+        if (game.isOutOfRange(this.owner.pos.rect)) this.owner.remove();
+    }
+}
+export class Menu extends Mono {//メニュー表示
     constructor(x, y, size, { icon = EMOJI.CAT, align = 1, color = cfg.theme.text, highlite = cfg.theme.highlite } = {}) {
         super(Pos, Child);
         this.pos.x = x;
@@ -957,7 +975,7 @@ class Menu extends Mono {//メニュー
         this.indexOffset = this.child.objs.length;
     }
     add(text) {
-        this.child.add(new Label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }))
+        this.child.add(new Label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }));
     }
     *stateSelect(newIndex = this.index) {
         const length = this.child.objs.length - this.indexOffset;
@@ -972,7 +990,7 @@ class Menu extends Mono {//メニュー
             yield* move.bind(this)('up', length - 1);
             yield* move.bind(this)('down', 1);
             if (game.input.isPress('z')) return this.child.objs[this.index + this.indexOffset].moji.getText;
-            if (this.isEnableCancel && game.input.isPress('x')) return text.cancel;
+            if (this.isEnableCancel && game.input.isPress('x')) return undefined;
         }
     }
     moveIndex(newIndex) {
@@ -987,20 +1005,5 @@ class Menu extends Mono {//メニュー
         this.curR.pos.x = item.pos.x - x + w;
         this.curR.pos.y = item.pos.y;
     }
-    current = () => this.index === -1 ? Menu.cancel : this.child.objs[this.index + this.indexOffset].moji.text;
-    static get cancel() { return 'cancel' };
-}
-class Watch extends Mono {//デバッグ用変数表示
-    constructor() {
-        super(Pos, Child);
-        this.child.drawlayer = 'ui';
-        this.child.addCreator('label', () => new Label());
-    }
-    clear() {
-        this.child.removeAll();
-    }
-    add(watch) {
-        const l = this.child.pool('label');
-        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5) });
-    }
+    current = () => this.index === -1 ? undefined : this.child.objs[this.index + this.indexOffset].moji.text;
 }
