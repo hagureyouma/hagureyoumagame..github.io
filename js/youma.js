@@ -378,11 +378,16 @@ export class State {//状態コンポーネント
     isEnable(id) {
         return this.generators.has(id);
     }
+    is(name, stateName) {
+        return this.generators.get(name)?.constructor.name === stateName;
+    }
     start(state, id = Util.uniqueId()) {
+        if (!state) return undefined;
         this.generators.set(id, state);
         return id;
     }
     startAndWait(state, id) {
+        if (!state) return undefined;
         return this.wait(this.start(state, id));
     }
     stop(id) {
@@ -399,7 +404,7 @@ export class State {//状態コンポーネント
         for (const [id, generator] of this.generators.entries()) {
             let result;
             while (generator) {
-                result = generator?.next(result);
+                result = generator.next(result);
                 if (result.done) this.stop(id);
                 if (result.value === undefined) break;
             }
