@@ -48,7 +48,7 @@ class Game {//エンジン本体
         this.screenRect = new Rect().set(0, 0, width, height);
         this.rangeRect = new Rect().set(0, 0, width, height);
         this.layers = new Layers(width, height);
-        this.root = new Mono(State, Child);
+        this.root = new Mono(Coro, Child);
         this.input = new Input();
         this.time = this.delta = 0;
         this.fpsBuffer = new Array(60).fill(0);
@@ -112,7 +112,7 @@ class Game {//エンジン本体
     }
     pushScene = scene => this.root.child.add(scene);
     popScene = () => this.root.child.pop();
-    setState = (state) => this.root.state.start(state);
+    setCoroutine = (coro) => this.root.coro.start(coro);
     isOutOfScreen = (rect) => !this.screenRect.isIntersect(rect);
     isWithinScreen = (rect) => !this.screenRect.isOverflow(rect);
     isOutOfRange = (rect) => !this.rangeRect.isIntersect(rect);
@@ -259,6 +259,7 @@ export class Util {//小物
     static degree = 180 / Math.PI;
     static uniqueId = () => Date.now().toString(16) + Math.floor(1000 * Math.random()).toString(16);
     static parseUnicode = (code) => String.fromCharCode(parseInt(code, 16));
+    static splitReturn(str) { return str.split('\n'); }
     static isEven = (n) => n % 2 === 0;
     static clamp = (value, min, max) => Math.min(Math.max(value, min), max);
     static degToX = (deg) => Math.cos(deg * Util.radian);
@@ -368,7 +369,7 @@ export class Mono {//ゲームオブジェクト
     }
     draw() { };
 }
-export class State {//状態コンポーネント
+export class Coro {//コルーチン
     constructor() {
         this.generators = new Map();
     }
@@ -378,17 +379,14 @@ export class State {//状態コンポーネント
     isEnable(id) {
         return this.generators.has(id);
     }
-    is(name, stateName) {
-        return this.generators.get(name)?.constructor.name === stateName;
-    }
-    start(state, id = Util.uniqueId()) {
-        if (!state) return undefined;
-        this.generators.set(id, state);
+    start(coro, id = Util.uniqueId()) {
+        if (!coro) return undefined;
+        this.generators.set(id, coro);
         return id;
     }
-    startAndWait(state, id) {
-        if (!state) return undefined;
-        return this.wait(this.start(state, id));
+    startAndGetWaitForFrag(coro, id) {
+        if (!coro) return undefined;
+        return this.wait(this.start(coro, id));
     }
     stop(id) {
         this.generators.delete(id);
@@ -416,11 +414,11 @@ export class State {//状態コンポーネント
         });
     }
 }
-export function* waitForFrag(func) {//関数の戻り値がtrueになるまで待機ステート
+export function* waitForFrag(func) {//関数の戻り値がtrueになるまで待機
     while (!func()) yield undefined;
     return true;
 }
-export function* waitForTime(time) {//指定した時間まで待機ステート
+export function* waitForTime(time) {//指定した時間まで待機
     time -= game.delta;
     while (time > 0) {
         time -= game.delta;
@@ -428,7 +426,7 @@ export function* waitForTime(time) {//指定した時間まで待機ステート
     }
     return true;
 }
-export function* waitForTimeOrFrag(time, func) {//指定した時間が経つか関数の戻り値がtrueになるまで待機ステート
+export function* waitForTimeOrFrag(time, func) {//指定した時間が経つか関数の戻り値がtrueになるまで待機
     time -= game.delta;
     while (time > 0 && !func()) {
         time -= game.delta;
@@ -984,7 +982,7 @@ export class Menu extends Mono {//メニュー表示
     add(text) {
         this.child.add(new Label(text, this.pos.x, this.pos.y + this.size * 1.5 * (this.child.objs.length - 2), { size: this.size, color: this.color, align: this.pos.align, valign: 1 }));
     }
-    *stateSelect(newIndex = this.index) {
+    *coroSelect(newIndex = this.index) {
         const length = this.child.objs.length - this.indexOffset;
         function* move(key, direction) {
             if (!game.input.isDown(key)) return;
