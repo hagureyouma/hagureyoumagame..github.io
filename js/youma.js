@@ -1,4 +1,5 @@
 //ヨウマエンジン
+
 //by はぐれヨウマ
 'use strict';
 class cfgDefault {//エンジン設定の初期値
@@ -11,7 +12,7 @@ class cfgDefault {//エンジン設定の初期値
         this.fontSize = {
             normal: 20,
             medium: 30,
-            large: 35,
+            large: 36,
             big: 40,
         };
         this.theme = {
@@ -125,7 +126,7 @@ class Game {//エンジン本体
     load(key) { return Util.load(key); }
     deleteSave(key) { Util.deleteSave(key); }
 }
-class Layers {//レイヤー管理
+class Layers {//レイヤーコンテナ
     constructor(width, height) {
         this.layers = new Map();
         this.width = width;
@@ -564,7 +565,7 @@ export class Color {//色コンポーネント
         ctx.globalAlpha = this.alpha;
     }
 }
-export class Pos {//座標コンポーネント
+export class Pos {//位置と大きさコンポーネント
     constructor() {
         this._rect = new Rect();
         this.reset();
@@ -809,11 +810,13 @@ export class Tofu extends Mono {//四角型描画
 }
 export class Moji {//文字コンポーネント
     static requieds = [Pos, Color];
+    static sizeCache = new Map();
     constructor() {
         this.reset();
     }
     reset() {
         this.text = '';
+        this.textSplit;
         this.weight = 'normal';
         this.size = cfg.fontSize.normal;
         this.font = cfg.font.default;
@@ -821,14 +824,26 @@ export class Moji {//文字コンポーネント
     }
     set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = {}) {
         this.text = text;
+        this.textSplit = text.split('\n');
         this.weight = weight;
         this.size = size;
         this.font = font;
+        ctx.textBaseline = this.baseLine;
         this.owner.color.setColor(color);
         const ctx = game.layers.get('main').getContext();
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
-        ctx.textBaseline = this.baseLine;
-        const tm = ctx.measureText(this.getText);
+
+        let maxWidth = 0;
+        for (let i = 0; i < this.textSplit; i++) {
+            const text = this.textSplit[i]
+            let tm = Moji.sizeCache.get(text);
+            if (!tm) {
+                tm = ctx.measureText(text);
+                Moji.sizeCache.set(text, tm);
+            }
+            maxWidth = Math.max(tm.width, maxWidth);
+        }
+        const tm = ctx.measureText(this.this.textSplit[i]);
         const pos = this.owner.pos;
         pos.set(x, y, tm.width, Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent));
         pos.align = align;
