@@ -572,6 +572,7 @@ export class Pos {//位置と大きさコンポーネント
     }
     reset() {
         this.set(0, 0, 0, 0);
+        this._width=this._height=0;
         this.angle = 0;
         this.align = this.valign = 0; //align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
@@ -581,6 +582,7 @@ export class Pos {//位置と大きさコンポーネント
         Object.assign(this, { x, y, width, height, halfWidth: width * 0.5, halfHeight: height * 0.5 });
         return this;
     }
+    get 
     get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0); }
     get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0); }
     get alignCollect() { return this.align * this.halfWidth; }
@@ -815,7 +817,7 @@ export class Moji {//文字コンポーネント
         this.reset();
     }
     reset() {
-        this.text = '';
+        this.text = this.beforeText = '';
         this.textSplit;
         this.weight = 'normal';
         this.size = cfg.fontSize.normal;
@@ -824,42 +826,57 @@ export class Moji {//文字コンポーネント
     }
     set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = {}) {
         this.text = text;
-        this.textSplit = text.split('\n');
         this.weight = weight;
         this.size = size;
         this.font = font;
-        ctx.textBaseline = this.baseLine;
+        this._applyText();
+        const pos = this.owner.pos;
+        pos.x = x;
+        pos.y = y;
+        pos.align = align;
+        pos.valign = valign;
+        pos.angle = angle;
         this.owner.color.setColor(color);
-        const ctx = game.layers.get('main').getContext();
+    }
+    get lineSpace() { return this.size * 0.25; }
+    _applyContext(ctx) {
         ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
-
-        let maxWidth = 0;
-        for (let i = 0; i < this.textSplit; i++) {
+        ctx.textBaseline = this.baseLine;
+    }
+    _applyText() {
+        const text = typeof this.text === 'function' ? this.text() : this.text;
+        if (text === this.beforeText) return;
+        this.beforeText = text;
+        this.textSplit = text.split('\n');
+        let textWidth = 0, textHeight = 0
+        const ctx = game.layers.get('main').getContext();
+        this._applyContext(ctx);
+        for (let i = 0; i < this.textSplit.length; i++) {
             const text = this.textSplit[i]
             let tm = Moji.sizeCache.get(text);
             if (!tm) {
                 tm = ctx.measureText(text);
                 Moji.sizeCache.set(text, tm);
             }
-            maxWidth = Math.max(tm.width, maxWidth);
+            textWidth = Math.max(tm.width, textWidth);
+            textHeight += Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent);
         }
-        const tm = ctx.measureText(this.this.textSplit[i]);
+        if (this.textSplit.length > 1) textHeight += this.lineSpace * (this.textSplit.length - 1);
         const pos = this.owner.pos;
-        pos.set(x, y, tm.width, Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent));
-        pos.align = align;
-        pos.valign = valign;
-        pos.angle = angle;
+        pos.width = textWidth;
+        pos.height = textHeight;
     }
-    get getText() { return typeof this.text === 'function' ? this.text() : this.text; };
     draw(ctx) {
         ctx.save();
         const pos = this.owner.pos;
         ctx.translate(pos.center, pos.middle);
         ctx.rotate(pos.angle * Util.radian);
-        ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
-        ctx.textBaseline = this.baseLine;
+        this._applyText()
+        this._applyContext(ctx);
         this.owner.color.applyContext(ctx);
-        ctx.fillText(this.getText, -pos.halfWidth, -pos.halfHeight);
+        for (let i = 0; i < this.textSplit.length; i++) {
+            ctx.fillText(this.textSplit[i], -pos.halfWidth, -pos.halfHeight + (i * this.size + this.lineSpace));
+        }
         ctx.restore();
     }
 }
