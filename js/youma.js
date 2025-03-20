@@ -572,27 +572,28 @@ export class Pos {//位置と大きさコンポーネント
     }
     reset() {
         this.set(0, 0, 0, 0);
-        this._width=this._height=0;
         this.angle = 0;
         this.align = this.valign = 0; //align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
         this.parent = undefined;
     }
     set(x, y, width, height) {
-        Object.assign(this, { x, y, width, height, halfWidth: width * 0.5, halfHeight: height * 0.5 });
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
         return this;
     }
-    get 
     get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0); }
     get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0); }
-    get alignCollect() { return this.align * this.halfWidth; }
-    get valignCollect() { return this.valign * this.halfHeight; }
+    get alignCollect() { return this.align * this.width * 0.5; }
+    get valignCollect() { return this.valign * this.height * 0.5; }
     get left() { return Math.floor(this.linkX - this.alignCollect); }
     get top() { return Math.floor(this.linkY - this.valignCollect); }
     get right() { return this.left + this.width; }
     get bottom() { return this.top + this.height; }
-    get center() { return this.left + this.halfWidth; }
-    get middle() { return this.top + this.halfHeight; }
+    get center() { return this.left + this.width * 0.5; }
+    get middle() { return this.top + this.height * 0.5; }
     get rect() { return this._rect.set(this.left, this.top, this.width, this.height); }
 }
 export class Move {//移動コンポーネント
@@ -824,7 +825,7 @@ export class Moji {//文字コンポーネント
         this.font = cfg.font.default;
         this.baseLine = 'top';
     }
-    set(text, { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = {}) {
+    set(text = '', { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = {}) {
         this.text = text;
         this.weight = weight;
         this.size = size;
@@ -844,7 +845,7 @@ export class Moji {//文字コンポーネント
         ctx.textBaseline = this.baseLine;
     }
     _applyText() {
-        const text = typeof this.text === 'function' ? this.text() : this.text;
+        const text = this.getText;
         if (text === this.beforeText) return;
         this.beforeText = text;
         this.textSplit = text.split('\n');
@@ -866,6 +867,7 @@ export class Moji {//文字コンポーネント
         pos.width = textWidth;
         pos.height = textHeight;
     }
+    get getText() { return typeof this.text === 'function' ? this.text() : this.text; }
     draw(ctx) {
         ctx.save();
         const pos = this.owner.pos;
@@ -875,15 +877,15 @@ export class Moji {//文字コンポーネント
         this._applyContext(ctx);
         this.owner.color.applyContext(ctx);
         for (let i = 0; i < this.textSplit.length; i++) {
-            ctx.fillText(this.textSplit[i], -pos.halfWidth, -pos.halfHeight + (i * this.size + this.lineSpace));
+            ctx.fillText(this.textSplit[i], -(pos.width * 0.5), -(pos.height * 0.5) + (i * this.size + this.lineSpace));
         }
         ctx.restore();
     }
 }
 export class Label extends Mono {//文字
-    constructor(text, x, y, { size = cfg.fontSize.normal, color = cfg.theme.text, font = cfg.font.default.name, weight = 'normal', align = 0, valign = 0 } = {}) {
+    constructor(text, x, y, { size = cfg.fontSize.normal, color = cfg.theme.text, font = cfg.font.default.name, weight = 'normal', align = 0, valign = 0, angle = 0 } = {}) {
         super(Moji);
-        this.moji.set(text, { x, y, size, color, font, weight, align, valign });
+        this.moji.set(text, { x, y, size, color, font, weight, align, valign, angle });
     }
 }
 export class Particle extends Mono {//パーティクル
