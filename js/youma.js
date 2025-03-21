@@ -10,6 +10,7 @@ class cfgDefault {//エンジン設定の初期値
             emoji: { name: 'FontAwesome', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', custom: true }
         }
         this.fontSize = {
+            small: 12,
             normal: 20,
             medium: 30,
             large: 36,
@@ -25,6 +26,9 @@ class cfgDefault {//エンジン設定の初期値
         }
         this.saveData = {
             name: 'saveData'
+        }
+        this.debug = {
+            drawPosSizeRect: true
         }
     }
 };
@@ -584,6 +588,12 @@ export class Pos {//位置と大きさコンポーネント
         this.height = height;
         return this;
     }
+    draw(ctx) {
+        if (!cfg.debug.drawPosSizeRect) return;
+        ctx.strokeStyle = 'red';
+        ctx.globalAlpha = 1;
+        ctx.strokeRect(this.left, this.top, this.width, this.height);
+    }
     get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0); }
     get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0); }
     get alignCollect() { return this.align * this.width * 0.5; }
@@ -822,10 +832,13 @@ export class Moji {//文字コンポーネント
         this.textSplit;
         this.weight = 'normal';
         this.size = cfg.fontSize.normal;
-        this.font = cfg.font.default;
+        this.font = cfg.font.default.name;
         this.baseLine = 'top';
+        this.fontStyleCache;
+        this.sizeCacheKey;
     }
-    set(text = '', { x = this.owner.pos.x, y = this.owner.pos.y, size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = {}) {
+    set(text = '', x = this.owner.pos.x, y = this.owner.pos.y, options = {}) {
+        const { size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = options;
         this.text = text;
         this.weight = weight;
         this.size = size;
@@ -840,13 +853,14 @@ export class Moji {//文字コンポーネント
         this.owner.color.setColor(color);
     }
     get lineSpace() { return this.size * 0.25; }
-    _applyContext(ctx) {
-        ctx.font = `${this.weight} ${this.size}px '${this.font}'`;
-        ctx.textBaseline = this.baseLine;
-    }
+    get lineHeight() { return this.size + this.lineSpace; }
+    get fontStyle() { return `${this.weight} ${this.size}px '${this.font}'`; }
+    get getText() { return typeof this.text === 'function' ? this.text() : this.text.toString(); }
     _applyText() {
         const text = this.getText;
-        if (text === this.beforeText) return;
+        if (text === this.beforeText && this.fontStyleCache === this.fontStyle) return;
+        this.fontStyleCache = this.fontStyle;
+        this.sizeCacheKey = text + this.fontStyleCache;
         this.beforeText = text;
         this.textSplit = text.split('\n');
         let textWidth = 0, textHeight = 0
@@ -854,20 +868,23 @@ export class Moji {//文字コンポーネント
         this._applyContext(ctx);
         for (let i = 0; i < this.textSplit.length; i++) {
             const text = this.textSplit[i]
-            let tm = Moji.sizeCache.get(text);
+            let tm = Moji.sizeCache.get(this.sizeCacheKey);
             if (!tm) {
                 tm = ctx.measureText(text);
-                Moji.sizeCache.set(text, tm);
+                Moji.sizeCache.set(this.sizeCacheKey, tm);
             }
             textWidth = Math.max(tm.width, textWidth);
-            textHeight += Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent);
+            textHeight += Math.ceil(Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent));
         }
         if (this.textSplit.length > 1) textHeight += this.lineSpace * (this.textSplit.length - 1);
         const pos = this.owner.pos;
         pos.width = textWidth;
         pos.height = textHeight;
     }
-    get getText() { return typeof this.text === 'function' ? this.text() : this.text; }
+    _applyContext(ctx) {
+        ctx.font = this.fontStyleCache;
+        ctx.textBaseline = this.baseLine;
+    }
     draw(ctx) {
         ctx.save();
         const pos = this.owner.pos;
@@ -877,15 +894,15 @@ export class Moji {//文字コンポーネント
         this._applyContext(ctx);
         this.owner.color.applyContext(ctx);
         for (let i = 0; i < this.textSplit.length; i++) {
-            ctx.fillText(this.textSplit[i], -(pos.width * 0.5), -(pos.height * 0.5) + (i * this.size + this.lineSpace));
+            ctx.fillText(this.textSplit[i], -(pos.width * 0.5), -(pos.height * 0.5) + (i * this.lineHeight));
         }
         ctx.restore();
     }
 }
 export class Label extends Mono {//文字
-    constructor(text, x, y, { size = cfg.fontSize.normal, color = cfg.theme.text, font = cfg.font.default.name, weight = 'normal', align = 0, valign = 0, angle = 0 } = {}) {
+    constructor(text, x = 0, y = 0, options = {}) {
         super(Moji);
-        this.moji.set(text, { x, y, size, color, font, weight, align, valign, angle });
+        this.moji.set(text, x, y, options);
     }
 }
 export class Particle extends Mono {//パーティクル
@@ -926,7 +943,7 @@ export class Particle extends Mono {//パーティクル
             }
             if (emoji) {
                 t = this.child.pool(Particle.MojiParticleName);
-                t.moji.set(Util.parseUnicode(emoji), { x: cx, y: cy, size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1 });
+                t.moji.set(Util.parseUnicode(emoji), cx, cy, { size: size, color: color, font: cfg.font.emoji.name, align: 1, valign: 1 });
                 t.pos.angle = angle;
                 if (isRandomAngle) t.pos.angle = (t.pos.angle + Util.rand(359)) % 360;
                 t.move.rotate = rotate;
@@ -977,7 +994,7 @@ export class Watch extends Mono {//変数の値を表示
     }
     add(watch) {
         const l = this.child.pool('label');
-        l.moji.set(watch, { x: 2, y: this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5) });
+        l.moji.set(watch, 2, this.pos.y + ((this.child.liveCount - 1) * l.moji.size * 1.5));
     }
 }
 export const game = new Game();//ゲームのインスタンス
@@ -999,8 +1016,9 @@ export class OutOfRangeToRemove {//範囲外に出ると削除コンポーネン
     }
 }
 export class Menu extends Mono {//メニュー表示
-    constructor(x, y, size, { icon = EMOJI.CAT, align = 1, color = cfg.theme.text, highlite = cfg.theme.highlite } = {}) {
+    constructor(x, y, size, options = {}) {
         super(Pos, Child);
+        const { icon = EMOJI.CAT, align = 1, color = cfg.theme.text, highlite = cfg.theme.highlite, isEnableCancel = false } = options;
         this.pos.x = x;
         this.pos.y = y;
         this.pos.align = align;
@@ -1008,7 +1026,7 @@ export class Menu extends Mono {//メニュー表示
         this.index = 0;
         this.color = color;
         this.highlite = highlite;
-        this.isEnableCancel = true;
+        this.isEnableCancel = isEnableCancel;
         this.child.add(this.curL = new Label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, align: 2, valign: 1 }));
         this.child.add(this.curR = new Label(Util.parseUnicode(icon), 0, 0, { size: this.size, color: this.highlite, font: cfg.font.emoji.name, valign: 1 }));
         this.indexOffset = this.child.objs.length;
@@ -1026,8 +1044,8 @@ export class Menu extends Mono {//メニュー表示
         this.moveIndex(newIndex);
         while (true) {
             yield undefined;
-            yield* move.bind(this)('up', length - 1);
-            yield* move.bind(this)('down', 1);
+            yield* move.call(this, 'up', length - 1);
+            yield* move.call(this, 'down', 1);
             if (game.input.isPress('z')) return this.child.objs[this.index + this.indexOffset].moji.getText;
             if (this.isEnableCancel && game.input.isPress('x')) return undefined;
         }

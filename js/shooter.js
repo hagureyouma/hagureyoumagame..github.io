@@ -95,8 +95,8 @@ class Unit {//ユニットコンポーネント
     defeatRequied() {//撃破時に呼び出す
         this.owner.color.restore();
         this.state = 'defeat';
-        shared.playdata.total.point += this.point;
-        if (this.data.isCountKo) shared.playdata.total.ko++;
+        this.scene.addPoint(this.point);
+        if (this.data.isCountKo) this.scene.addKo();
         this.onDefeat?.();
         this.owner.remove();
     }
@@ -113,7 +113,7 @@ class Player extends Mono {//自機
         this.unit.onBanish = () => {
             this.coro.start(this.coroDamagedInvincible(), 'special');
         };
-        this.moji.set(Util.parseUnicode(data.char), { x: game.width * 0.5, y: game.height - (data.size * 0.5), size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(data.char), game.width * 0.5, game.height - (data.size * 0.5), { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.bullets = bullets;
     }
@@ -146,6 +146,7 @@ class Player extends Mono {//自機
     }
     *coroAction() {
         this.unit.state = 'action';
+        yield* waitForTime(0.1);
         this.unit.firing = false;
         const point = 100;
         const shotOption = { deg: 90, count: 1, speed: datas.player.bulletSpeed, color: 'lime', point: point };
@@ -321,7 +322,7 @@ class Baddie extends Mono {//敵キャラ
         const data = datas.baddies[name];
         this.routine = this.routines[data.routine](this, pattern, bullets, scene);
         this.pos.parent = parent;
-        this.moji.set(Util.parseUnicode(data.char), { x: x, y: y, size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
+        this.moji.set(Util.parseUnicode(data.char), x, y, { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width, this.pos.height);
         this.unit.set(data, scene);
         return this;
@@ -679,23 +680,6 @@ class BulletBox extends Mono {//弾
         return result;
     }
 }
-class DialogMenu extends Mono {//ダイアログメニュー
-    constructor(caption, items, isPause = false) {
-        super(Child);
-        this.child.drawlayer = 'ui';
-        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
-        this.child.add(new Label(caption, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
-        this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
-        for (const item of items) this.menu.add(item);
-        this.isPause = isPause;
-    }
-    *coroDefault() {
-        game.layers.get('effect').isPauseBlur = this.isPause;
-        const result = yield* this.menu.coroSelect();
-        game.layers.get('effect').isPauseBlur = false;
-        return result;
-    }
-}
 class SceneTitle extends Mono {//タイトル画面
     constructor() {
         super(Child);
@@ -705,54 +689,59 @@ class SceneTitle extends Mono {//タイトル画面
         this.child.add(new Label(text.title2, game.width * 0.5, titleY + cfg.fontSize.large * 1.5, { size: cfg.fontSize.large, align: 1, valign: 1 }));
         //ボタンを押してね
         this.child.add(this.presskey = new Label(text.presskey, game.width * 0.5, game.height * 0.5 + cfg.fontSize.medium * 1.5, { size: cfg.fontSize.medium, align: 1, valign: 1 }));
+        //コピーライト表示
+        this.child.add(new Label(text.title_copyright, game.width * 0.5, game.height - cfg.fontSize.small, { size: cfg.fontSize.small, align: 1, valign: 2 }));
         //メニュー
-        this.child.add(this.titleMenu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium));
-        this.titleMenu.add(text.start);
-        this.titleMenu.add(text.highscore);
-        this.titleMenu.add(text.credit);
-        this.titleMenu.isExist = false;
-        //操作方法
-        this.child.add(this.explanation1 = new Label(text.explanation1, game.width * 0.5, game.height - (cfg.fontSize.normal * 2.5), { align: 1, valign: 1 }));
-        this.child.add(this.explanation2 = new Label(text.explanation2, game.width * 0.5, game.height - cfg.fontSize.normal, { align: 1, valign: 1 }));
-        this.explanation1.isExist = false;
-        this.explanation2.isExist = false;
-        game.setCoroutine(this.coroPressKey());
+        this.child.add(this.titleMenu = new SceneTitleMenu(this));
+        game.setCoroutine(this.coroDefault());
     }
-    *coroPressKey() {
+    *coroDefault() {
         this.presskey.color.blink(0.5);
         while (true) {
             yield undefined;
             if (!game.input.isPress('z')) continue;
             this.presskey.isExist = false;
-            yield* this.coroTitleMenu();
+            yield* this.titleMenu.coroDefault();
             this.presskey.isExist = true;
             this.presskey.color.blink(0.5);
         }
     }
-    *coroTitleMenu() {
-        this.titleMenu.isExist = true;
-        this.explanation1.isExist = true;
-        this.explanation2.isExist = true;
+
+}
+class SceneTitleMenu extends Mono {
+    constructor(owner) {
+        super(Child);
+        this.owner = owner;
+        this.isExist = false;
+        //メニュー
+        this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium, { isEnableCancel: true }));
+        this.menu.add(text.start);
+        this.menu.add(text.highscore);
+        this.menu.add(text.credit);
+        //操作方法
+        this.child.add(this.explanation1 = new Label(text.explanation1, game.width * 0.5, game.height - (cfg.fontSize.normal * 3), { align: 1, valign: 2 }));
+        this.child.add(this.explanation2 = new Label(text.explanation2, game.width * 0.5, game.height - cfg.fontSize.normal * 2, { align: 1, valign: 2 }));
+    }
+    *coroDefault() {
+        this.isExist = true;
         while (true) {
-            const result = yield* this.titleMenu.coroSelect();
+            const result = yield* this.menu.coroSelect();
             if (!result) {
-                this.titleMenu.isExist = false;
-                this.explanation1.isExist = false;
-                this.explanation2.isExist = false;
+                this.isExist = false;
                 return;
             }
-            this.isExist = false;
+            this.owner.isExist = false;
             if (result === text.start) yield* new ScenePlay().coroDefault();
             if (result === text.highscore) yield* new SceneHighscore().coroDefault();
             if (result === text.credit) yield* new SceneCredit().coroDefault();
-            this.isExist = true;
+            this.owner.isExist = true;
         }
     }
 }
 class ScenePlay extends Mono {//プレイ画面
     constructor() {
         super(Coro, Child);
-        this.elaps = 0;
+        this.play = new PlayDataManager(shared);
         //自機
         this.child.add(this.playerside = new Mono(Child));
         this.playerside.child.addCreator('player', () => new Player());
@@ -767,9 +756,9 @@ class ScenePlay extends Mono {//プレイ画面
         //UI
         this.child.add(this.ui = new Mono(Child));
         this.ui.child.drawlayer = 'ui';
-        this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
+        this.ui.child.add(this.textScore = new Label(() => `SCORE ${this.play.total.point} KO ${this.play.total.ko}`, 2, 2));
         //this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2, { align: 2 }));
-        this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${shared.playdata.total.stage}`, game.width - 2, 2, { align: 2 }));
+        this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${this.play.total.stage}`, game.width - 2, 2, { align: 2 }));
         //残機表示
         this.ui.child.add(this.remains = new Mono(Child));
         this.remains.child.addCreator('remains', () => { return new Label(); });
@@ -783,14 +772,9 @@ class ScenePlay extends Mono {//プレイ画面
         this.telop.isExist = false;
 
         this.child.add(this.debug = new Watch());
-        this.debug.pos.y = 40;
-        //this.child.add(this.textScore = new Bun(() => `Baddie:${this.baddies.child.liveCount} Bullets:${this.baddiesbullets.child.liveCount}`, { font: 'Impact' }));
-        // this.textScore.pos.x = 2;
-        // this.textScore.pos.y = 48;
-        this.isClear = false;
+
         this.newGame();
     }
-    get isFailure() { return shared.playdata.total.remains <= 0; }
     *showTelop(text, time, blink = 0) {
         this.telop.moji.set(text);
         this.telop.color.blink(blink);
@@ -799,7 +783,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.telop.isExist = false;
     }
     update() {
-        this.player.maneuver();//プレイヤーの入力受付を優先するのでここで受け付ける
+        this.player.maneuver();//プレイヤーの入力受付を優先するからここで受け付けるよ
     }
     postUpdate() {
         //キャラの当たり判定
@@ -813,7 +797,7 @@ class ScenePlay extends Mono {//プレイ画面
                 if (!bullet.collision.hit(target)) return;
                 if (!target.unit.isBanish()) return;
                 target.color.flash('crimson');
-                shared.playdata.total.point += bullet.bullet.point;
+                this.addPoint(bullet.bullet.point);
                 bullet.remove();
                 target.unit.banish(bullet.bullet.damage);
             });
@@ -821,30 +805,26 @@ class ScenePlay extends Mono {//プレイ画面
         //弾の当たり判定
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
-        //経過時間
-        this.elaps += game.delta;
-        shared.playdata.total.time += game.delta;
     }
     * coroDefault() {
         game.pushScene(this);
         while (true) {
             yield undefined;
-            if (this.isClear) {//ステージクリアした
+            if (this.play.isClear) {//ステージクリアした
                 this.player.unit.invincible = true;
                 yield* this.showTelop(text.stageclear, 2);
                 yield* new SceneClear().coroDefault();
-                shared.playdata.total.stage++;
-                shared.playdata.backup = new scoreData(shared.playdata.total);
+                this.play.nextStage();
                 this.resetStage();
                 continue;
             }
-            if (this.isFailure) {//負けた
+            if (this.play.isFailure) {//負けた
                 yield* this.showTelop(text.gameover, 2);
                 if (this.isNewRecord()) {
-                    game.save(shared, cfg.saveData.name);//セーブ
-                    yield* new SceneHighscore(shared.playdata.total).coroDefault();
+                    this.play.save();
+                    yield* new SceneHighscore(this.play).coroDefault();
                 }
-                switch (yield* new SceneGameOver(this.newGame).coroDefault()) {
+                switch (yield* new SceneConfirm(text.gameover, [text.continue, text.returntitle]).coroDefault()) {
                     case text.continue:
                         this.continueGame();
                         break;
@@ -856,7 +836,7 @@ class ScenePlay extends Mono {//プレイ画面
             }
             if (game.input.isPress('x')) {//ポーズメニューを開く
                 this.isActive = false;
-                switch (yield* new ScenePause().coroDefault()) {
+                switch (yield* new SceneConfirm(text.pause, [text.resume, text.restart, text.returntitle], { isPause: true, isEnableCancel: true }).coroDefault()) {
                     case text.restart:
                         this.continueGame();
                         break;
@@ -867,18 +847,18 @@ class ScenePlay extends Mono {//プレイ画面
                 this.isActive = true;
                 continue;
             }
+            //経過時間
+            this.play.update();
         }
     }
     * coroStage() {
-        this.isClear = false;
         const appears = ['crow', 'dove', 'bigcrow'];
         const bossName = 'greatcrow';
         const phaseSec = 30;
-        const spawnIntervalFactor = 1 * Math.pow(0.9, shared.playdata.total.stage);
-        this.elaps = 0;
+        const spawnIntervalFactor = 1 * Math.pow(0.9, this.play.total.stage);
         //道中
-        while (this.elaps <= phaseSec || this.baddies.child.liveCount > 0) {
-            if (this.elaps > phaseSec) {
+        while (this.play.elaps <= phaseSec || this.baddies.child.liveCount > 0) {
+            if (this.play.elaps > phaseSec) {
                 yield undefined;
                 continue;
             }
@@ -910,15 +890,14 @@ class ScenePlay extends Mono {//プレイ画面
             });
             this.bossHPgauge.remove();
         }
-        this.isClear = true;
+        this.play.stageClear();
     }
     newGame() {
-        shared.playdata.backup = new scoreData();
-        shared.playdata.total = new scoreData();
+        this.play.newGame();
         this.resetStage();
     }
     continueGame() {
-        shared.playdata.total = new scoreData(shared.playdata.backup);
+        this.play.continue();
         this.resetStage();
     }
     playerSpawn(isRespawn = false) {
@@ -926,9 +905,9 @@ class ScenePlay extends Mono {//プレイ画面
         this.player = this.playerside.child.pool('player');
         this.player.set(this, this.playerbullets);
         this.player.unit.onDefeat = () => {
-            shared.playdata.total.remains--;
+            this.play.death();
             this.applyRemains();
-            if (shared.playdata.total.remains <= 0) return;
+            if (!this.play.isRemains()) return;
             this.coro.start(function* () {
                 yield* waitForTime(1);
                 this.playerSpawn(true);
@@ -955,34 +934,113 @@ class ScenePlay extends Mono {//プレイ画面
     }
     applyRemains() {
         this.remains.child.removeAll();
-        if (shared.playdata.total.remains === 0) return;
         const data = this.player.unit.data;
-        for (let i = 0; i < shared.playdata.total.remains; i++) {
+        for (let i = 0; i < this.play.remainsCount; i++) {
             const obj = this.remains.child.pool('remains');
-            obj.moji.set(Util.parseUnicode(data.char), { x: (cfg.fontSize.normal * 1.25) * i, y: (cfg.fontSize.normal * 1.25), color: data.color, font: cfg.font.emoji.name, align: 0, valign: 0 });
+            obj.moji.set(Util.parseUnicode(data.char), (cfg.fontSize.normal * 1.25) * i, (cfg.fontSize.normal * 1.25), { color: data.color, font: cfg.font.emoji.name, align: 0, valign: 0 });
         }
     }
     isNewRecord() {
-        shared.highscores.push(shared.playdata.total);
-        shared.highscores.sort((a, b) => b.point - a.point);
-        if (shared.highscores.length < datas.game.highscoreListMax) return true;
-        return shared.playdata.total != shared.highscores.pop();
+        return this.play.isNewRecord();
+    }
+    extend() {
+        if (this.play.isExtend()) this.applyRemains();
+    }
+    addPoint(point) {
+        this.play.total.point += point;
+    }
+    addKo() {
+        this.play.total.ko++;
     }
 }
-class ScenePause extends Mono {//中断メニュー画面
-    constructor() {
-        super(Child);
-        this.child.add(this.dialog = new DialogMenu(text.pause, [text.resume, text.restart, text.returntitle], true));
+class PlayDataManager {
+    constructor(data) {
+        this.data = data;
+        this.isClear = false;
+        this.extendedCount = 1;
     }
-    *coroDefault() {
+    newGame() {
+        this.data.playdata.backup = new scoreData();
+        this.data.playdata.total = new scoreData();
+        this.isClear = false;
+        this.extendedCount = 1;
+    }
+    continue() {
+        this.data.playdata.total = new scoreData(this.data.playdata.backup);
+        this.isClear = false;
+        this.extendedCount = 1;
+    }
+    death() {
+        this.data.playdata.total.remains--;
+    }
+    isRemains() {
+        return this.data.playdata.total.remains > -1;
+    }
+    get total() { return this.data.playdata.total; }
+    get remainsCount() { return this.data.playdata.total.remains; }
+    get elaps() { return this.data.playdata.total.time - this.data.playdata.backup.time; }
+    update() {
+        this.data.playdata.total.time += game.delta;
+    }
+    stageClear() { this.isClear = true; }
+    get isFailure() { return this.data.playdata.total.remains < 0; }
+    nextStage() {
+        this.data.playdata.total.stage++;
+        this.data.playdata.backup = new scoreData(this.data.playdata.total);
+    }
+    isNewRecord() {
+        this.data.highscores.push(this.data.playdata.total);
+        this.data.highscores.sort((a, b) => b.point - a.point);
+        if (this.data.highscores.length < datas.game.highscoreListMax) return true;
+        return this.data.playdata.total != this.data.highscores.pop();
+    }
+    isExtend() {
+        if (Math.floor(this.data.playdata.total.point / datas.game.extendedScore) <= this.extendedCount) return false;
+        this.extendedCount++;
+        this.data.playdata.total.remains++;
+        return true;
+    }
+    save() {
+        this.data.save(cfg.saveData.name);
+    }
+    get highscore() { return this.data.highscore; }
+    clearHighscore() {
+        this.data.highscores = [];
+        this.data.save(cfg.saveData.name);
+    }
+    getDif() {
+        const total = this.data.playdata.total;
+        const backup = this.data.playdata.backup;
+        return {
+            time: Math.floor(total.time - backup - time),
+            point: total.point - backup.point,
+            ko: total.ko - backup.ko
+        }
+    }
+}
+class SceneConfirm extends Mono {//確認メッセージ
+    constructor(caption, items, options = {}) {
+        const { isEnableCancel = false, isPause = false, isDialog = false } = options;
+        super(Child);
+        const captionColor = isDialog ? cfg.theme.text : cfg.theme.highlite;
+        this.child.drawlayer = 'ui';
+        this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
+        this.child.add(new Label(caption, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: captionColor, align: 1, valign: 1 }));
+        this.child.add(this.menu = new Menu(game.width * 0.5, game.height * 0.5, cfg.fontSize.medium, { isEnableCancel: isEnableCancel }));
+        for (const item of items) this.menu.add(item);
+        this.isPause = isPause;
+    }
+    *coroDefault(firtsIndex) {
         game.pushScene(this);
-        const result = yield* this.dialog.coroDefault();
+        game.layers.get('effect').isPauseBlur = this.isPause;
+        const result = yield* this.menu.coroSelect(firtsIndex);
+        game.layers.get('effect').isPauseBlur = false;
         game.popScene();
         return result;
     }
 }
 class SceneClear extends Mono {//ステージクリア画面
-    constructor() {
+    constructor(dif) {
         super(Child);
         this.child.drawlayer = 'ui';
         this.child.add(new Label(text.stageclear, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
@@ -1014,46 +1072,48 @@ class SceneClear extends Mono {//ステージクリア画面
         return;
     }
 }
-class SceneGameOver extends Mono {//ゲームオーバー画面
-    constructor() {
-        super(Child);
-        this.child.add(this.dialog = new DialogMenu(text.gameover, [text.continue, text.returntitle]));
-        this.dialog.menu.isEnableCancel = false;
-    }
-    *coroDefault() {
-        game.pushScene(this);
-        const result = yield* this.dialog.coroDefault();
-        game.popScene();
-        return result;
-    }
-}
 class SceneHighscore extends Mono {//ハイスコア画面
-    constructor(newRecord) {
+    constructor(playDataManager, newRecord = false) {
         super(Child);
+        this.play = playDataManager;
+        this.newRecord = newRecord;
         this.child.drawlayer = 'ui';
-        if (newRecord) this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
+        if (this.newRecord) this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
         this.child.add(new Label(text.highscore, game.width * 0.5, game.height * 0.15, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
+        this.child.add(this.scoreContainer = new Mono(Child));
+        this._applyScores();
+        if (!this.newRecord) {
+            this.child.add(this.explanation1 = new Label(text.highscore_clear_key, game.width * 0.5, game.height, { align: 1, valign: 2 }));
+        }
+    }
+    _applyScores() {
+        this.scoreContainer.child.removeAll();
         const x = game.width * 0.2;
         const y = game.height * 0.25;
-        for (let i = 0; i < shared.highscores.length; i++) {
-            const score = shared.highscores[i];
+        for (let i = 0; i < this.play.highscore.length; i++) {
+            const score = this.play.highscore[i];
             const label = new Label(`${(i + 1).toString().padStart(2, ' ')}:${score.point}`, x, y + i * (cfg.fontSize.medium * 1.25), { valign: 1 });
-            if (score === newRecord) {
+            if (score === this.newRecord) {
                 label.color.setColor(cfg.theme.highlite);
                 label.color.blink(0.5);
             }
-            this.child.add(label);
-        }
-
-        if (!newRecord) {
-            this.child.add(this.explanation1 = new Label(text.explanation1, game.width * 0.5, game.height - (cfg.fontSize.normal * 2.5), { align: 1, valign: 1 }));
+            this.scoreContainer.child.add(label);
         }
     }
     *coroDefault() {
         game.pushScene(this);
         while (true) {
             yield undefined;
-            if (game.input.isPress('z') || game.input.isPress('x')) break;
+            if (game.input.isPress('x')) break;
+            if (game.input.isPress('z')) {
+                if (this.newRecord) break;
+                switch (yield* new SceneConfirm(text.highscore_clear_confirm, [text.done, text.cancel], { isPause: true, isDialog: true }).coroDefault(1)) {
+                    case text.done:
+                        this.play.clearHighscore();
+                        this._applyScores();
+                        break;
+                }
+            }
         }
         game.popScene();
         return;
@@ -1112,14 +1172,16 @@ const text = {//テキスト
     title: 'シューティングゲーム', title2: 'のようなもの', presskey: 'Zキーを押してね',
     explanation1: '↑↓←→:選択、移動',
     explanation2: 'Z:決定、攻撃　X:取消、中断',
+    title_copyright: '©2025 HAGURE YOUMA All rights reserved.',
     nextStage: 'Bキーで次へ',
     start: 'スタート', highscore: 'ハイスコア', credit: 'クレジット',
     pause: 'ポーズ', resume: 'ゲームを続ける', restart: '最初からやり直す', returntitle: 'タイトルに戻る',
     stageclear: 'ステージ　クリア', total: '合計', stage: 'ステージ', time: 'タイム', point: 'スコア', ko: '撃破数',
     gameover: 'ゲームオーバー', continue: 'コンティニュー',
-    clearHighscore:'ハイスコアを消去します。\nよろしいですか？',
+    highscore_clear_key: 'Zキーでハイスコア消去',
+    highscore_clear_confirm: 'ハイスコアを消去します。\nよろしいですか？',
     staff: [
-        'プロデューサー　はぐれヨウマ',
+        '制作　はぐれヨウマ',
         'プログラム　はぐれヨウマ',
         'グラフィック　はぐれヨウマ',
         'テストプレイ　はぐれヨウマ',
@@ -1191,19 +1253,11 @@ const datas = {//ゲームデータ
         damagedInvincibilityTime: 1,
     },
     game: {
+        extendedScore: 30000,
         highscoreListMax: 10,
         defaultRemains: 3
     }
 };
-class saveData {//セーブデータ
-    constructor() {
-        this.playdata = {
-            total: new scoreData(),
-            backup: new scoreData()
-        };
-        this.highscores = [];
-    }
-}
 class scoreData {//スコアデータ
     constructor(from) {
         this.stage = from?.stage || 1;
@@ -1213,7 +1267,34 @@ class scoreData {//スコアデータ
         this.remains = from?.remains || datas.game.defaultRemains;
     }
 }
-let shared//セーブデータの変数
+class saveData {//セーブデータ
+    constructor() {
+        this.highscores = [];
+    }
+}
+class sharedData {//共用データ
+    constructor() {
+        this.reset();
+    }
+    reset() {
+        this.playdata = {
+            total: new scoreData(),
+            backup: new scoreData()
+        };
+        this.highscores = [];
+    }
+    save(key) {
+        const data = new saveData();
+        data.highscores = this.highscores;
+        game.save(data, key)
+    }
+    load(key) {
+        const data = game.load(key);
+        if (!data) return;
+        this.highscores = data.highscores;
+    }
+}
+const shared = new sharedData()//共用データ変数
 //ゲーム実行
 game.start([cfg.font.default, cfg.font.emoji], () => {
     game.setRange(game.width * 0.25);
@@ -1230,6 +1311,6 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
     game.layers.add(cfg.layer);
     game.layers.get('effect').enableBlur();
 
-    shared = game.load(cfg.saveData.name) ?? new saveData();
+    shared.load(cfg.saveData.name);
     game.pushScene(new SceneTitle());
 });
