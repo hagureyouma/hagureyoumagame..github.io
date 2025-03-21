@@ -741,7 +741,7 @@ class SceneTitleMenu extends Mono {
 class ScenePlay extends Mono {//プレイ画面
     constructor() {
         super(Coro, Child);
-        this.play = new PlayDataManager(shared);
+        this.play = new PlayDataManager();
         //自機
         this.child.add(this.playerside = new Mono(Child));
         this.playerside.child.addCreator('player', () => new Player());
@@ -756,9 +756,9 @@ class ScenePlay extends Mono {//プレイ画面
         //UI
         this.child.add(this.ui = new Mono(Child));
         this.ui.child.drawlayer = 'ui';
-        this.ui.child.add(this.textScore = new Label(() => `SCORE ${this.play.total.point} KO ${this.play.total.ko}`, 2, 2));
+        this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
         //this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2, { align: 2 }));
-        this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${this.play.total.stage}`, game.width - 2, 2, { align: 2 }));
+        this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${shared.playdata.total.stage}`, game.width - 2, 2, { align: 2 }));
         //残機表示
         this.ui.child.add(this.remains = new Mono(Child));
         this.remains.child.addCreator('remains', () => { return new Label(); });
@@ -813,7 +813,7 @@ class ScenePlay extends Mono {//プレイ画面
             if (this.play.isClear) {//ステージクリアした
                 this.player.unit.invincible = true;
                 yield* this.showTelop(text.stageclear, 2);
-                yield* new SceneClear().coroDefault();
+                yield* new SceneClear(shared.getCurrentStat()).coroDefault();
                 this.play.nextStage();
                 this.resetStage();
                 continue;
@@ -855,7 +855,7 @@ class ScenePlay extends Mono {//プレイ画面
         const appears = ['crow', 'dove', 'bigcrow'];
         const bossName = 'greatcrow';
         const phaseSec = 30;
-        const spawnIntervalFactor = 1 * Math.pow(0.9, this.play.total.stage);
+        const spawnIntervalFactor = 1 * Math.pow(0.9, shared.playdata.total.stage);
         //道中
         while (this.play.elaps <= phaseSec || this.baddies.child.liveCount > 0) {
             if (this.play.elaps > phaseSec) {
@@ -935,7 +935,7 @@ class ScenePlay extends Mono {//プレイ画面
     applyRemains() {
         this.remains.child.removeAll();
         const data = this.player.unit.data;
-        for (let i = 0; i < this.play.remainsCount; i++) {
+        for (let i = 0; i < shared.playdata.total.remains; i++) {
             const obj = this.remains.child.pool('remains');
             obj.moji.set(Util.parseUnicode(data.char), (cfg.fontSize.normal * 1.25) * i, (cfg.fontSize.normal * 1.25), { color: data.color, font: cfg.font.emoji.name, align: 0, valign: 0 });
         }
@@ -947,75 +947,59 @@ class ScenePlay extends Mono {//プレイ画面
         if (this.play.isExtend()) this.applyRemains();
     }
     addPoint(point) {
-        this.play.total.point += point;
+        shared.playdata.total.point += point;
+        this.extend();
     }
     addKo() {
-        this.play.total.ko++;
+        shared.playdata.total.ko++;
     }
 }
 class PlayDataManager {
-    constructor(data) {
-        this.data = data;
+    constructor() {
         this.isClear = false;
-        this.extendedCount = 1;
+        this.extendedCount = 0;
     }
     newGame() {
-        this.data.playdata.backup = new scoreData();
-        this.data.playdata.total = new scoreData();
+        shared.playdata.backup = new scoreData();
+        shared.playdata.total = new scoreData();
         this.isClear = false;
-        this.extendedCount = 1;
+        this.extendedCount = 0;
     }
     continue() {
-        this.data.playdata.total = new scoreData(this.data.playdata.backup);
+        shared.playdata.total = new scoreData(shared.playdata.backup);
         this.isClear = false;
-        this.extendedCount = 1;
+        this.extendedCount = 0;
     }
     death() {
-        this.data.playdata.total.remains--;
+        shared.playdata.total.remains--;
     }
     isRemains() {
-        return this.data.playdata.total.remains > -1;
+        return shared.playdata.total.remains > -1;
     }
-    get total() { return this.data.playdata.total; }
-    get remainsCount() { return this.data.playdata.total.remains; }
-    get elaps() { return this.data.playdata.total.time - this.data.playdata.backup.time; }
+    get elaps() { return shared.playdata.total.time - shared.playdata.backup.time; }
     update() {
-        this.data.playdata.total.time += game.delta;
+        shared.playdata.total.time += game.delta;
     }
     stageClear() { this.isClear = true; }
-    get isFailure() { return this.data.playdata.total.remains < 0; }
+    get isFailure() { return shared.playdata.total.remains < 0; }
     nextStage() {
-        this.data.playdata.total.stage++;
-        this.data.playdata.backup = new scoreData(this.data.playdata.total);
+        shared.playdata.total.stage++;
+        shared.playdata.backup = new scoreData(shared.playdata.total);
     }
     isNewRecord() {
-        this.data.highscores.push(this.data.playdata.total);
-        this.data.highscores.sort((a, b) => b.point - a.point);
-        if (this.data.highscores.length < datas.game.highscoreListMax) return true;
-        return this.data.playdata.total != this.data.highscores.pop();
+        shared.highscores.push(shared.playdata.total);
+        shared.highscores.sort((a, b) => b.point - a.point);
+        if (shared.highscores.length < datas.game.highscoreListMax) return true;
+        return shared.playdata.total != shared.highscores.pop();
     }
     isExtend() {
-        if (Math.floor(this.data.playdata.total.point / datas.game.extendedScore) <= this.extendedCount) return false;
+        if (Math.floor(shared.playdata.total.point / datas.game.extendedScore) <= this.extendedCount) return false;
         this.extendedCount++;
-        this.data.playdata.total.remains++;
+        shared.playdata.total.remains++;
         return true;
     }
     save() {
-        this.data.save(cfg.saveData.name);
-    }
-    get highscore() { return this.data.highscore; }
-    clearHighscore() {
-        this.data.highscores = [];
-        this.data.save(cfg.saveData.name);
-    }
-    getDif() {
-        const total = this.data.playdata.total;
-        const backup = this.data.playdata.backup;
-        return {
-            time: Math.floor(total.time - backup - time),
-            point: total.point - backup.point,
-            ko: total.ko - backup.ko
-        }
+        shared.save(cfg.saveData.name);
     }
 }
 class SceneConfirm extends Mono {//確認メッセージ
@@ -1040,24 +1024,23 @@ class SceneConfirm extends Mono {//確認メッセージ
     }
 }
 class SceneClear extends Mono {//ステージクリア画面
-    constructor(dif) {
+    constructor() {
         super(Child);
         this.child.drawlayer = 'ui';
         this.child.add(new Label(text.stageclear, game.width * 0.5, game.height * 0.25, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         let x = game.width * 0.4;
         const y = game.height * 0.4;
         const line = cfg.fontSize.medium * 1.5;
-        const before = shared.playdata.backup;
-        const total = shared.playdata.total;
+        const stat = shared.getCurrentStat();
         this.child.add(new Label(text.stage, x, y, { align: 2, valign: 1 }));
         this.child.add(new Label(text.time, x, y + line, { align: 2, valign: 1 }));
         this.child.add(new Label(text.point, x, y + (line * 2), { align: 2, valign: 1 }));
         this.child.add(new Label(text.ko, x, y + (line * 3), { align: 2, valign: 1 }));
         x = game.width * 0.8;
-        this.child.add(new Label(total.stage, x, y, { align: 2, valign: 1 }));
-        this.child.add(new Label(Math.floor(total.time - before.time), x, y + line, { align: 2, valign: 1 }));
-        this.child.add(new Label(total.point - before.point, x, y + (line * 2), { align: 2, valign: 1 }));
-        this.child.add(new Label(total.ko - before.ko, x, y + (line * 3), { align: 2, valign: 1 }));
+        this.child.add(new Label(stat.stage, x, y, { align: 2, valign: 1 }));
+        this.child.add(new Label(stat.time), x, y + line, { align: 2, valign: 1 });
+        this.child.add(new Label(stat.point, x, y + (line * 2), { align: 2, valign: 1 }));
+        this.child.add(new Label(stat.ko, x, y + (line * 3), { align: 2, valign: 1 }));
         const nextStage = new Label(text.nextStage, game.width * 0.5, game.height - (line * 2), { size: cfg.fontSize.medium, align: 1, valign: 1 })
         nextStage.color.blink(0.5);
         this.child.add(nextStage);
@@ -1073,9 +1056,8 @@ class SceneClear extends Mono {//ステージクリア画面
     }
 }
 class SceneHighscore extends Mono {//ハイスコア画面
-    constructor(playDataManager, newRecord = false) {
+    constructor(newRecord = false) {
         super(Child);
-        this.play = playDataManager;
         this.newRecord = newRecord;
         this.child.drawlayer = 'ui';
         if (this.newRecord) this.child.add(new Tofu().set(0, 0, game.width, game.height, 'black', 0.5));
@@ -1090,8 +1072,8 @@ class SceneHighscore extends Mono {//ハイスコア画面
         this.scoreContainer.child.removeAll();
         const x = game.width * 0.2;
         const y = game.height * 0.25;
-        for (let i = 0; i < this.play.highscore.length; i++) {
-            const score = this.play.highscore[i];
+        for (let i = 0; i < shared.highscores.length; i++) {
+            const score = shared.highscores[i];
             const label = new Label(`${(i + 1).toString().padStart(2, ' ')}:${score.point}`, x, y + i * (cfg.fontSize.medium * 1.25), { valign: 1 });
             if (score === this.newRecord) {
                 label.color.setColor(cfg.theme.highlite);
@@ -1109,7 +1091,8 @@ class SceneHighscore extends Mono {//ハイスコア画面
                 if (this.newRecord) break;
                 switch (yield* new SceneConfirm(text.highscore_clear_confirm, [text.done, text.cancel], { isPause: true, isDialog: true }).coroDefault(1)) {
                     case text.done:
-                        this.play.clearHighscore();
+                        shared.clearHighscore();
+                        shared.save(cfg.saveData.name);
                         this._applyScores();
                         break;
                 }
@@ -1266,6 +1249,13 @@ class scoreData {//スコアデータ
         this.ko = from?.ko || 0;
         this.remains = from?.remains || datas.game.defaultRemains;
     }
+    dif(other) {
+        const result = new scoreData(this);
+        result.time = Math.floor(result.time - other.time);
+        result.point -= other.point;
+        result.ko - other.ko;
+        return result;
+    }
 }
 class saveData {//セーブデータ
     constructor() {
@@ -1292,6 +1282,12 @@ class sharedData {//共用データ
         const data = game.load(key);
         if (!data) return;
         this.highscores = data.highscores;
+    }
+    clearHighscore() {
+        this.highscores = [];
+    }
+    getCurrentStat() {
+        return this.playdata.total.dif(this.playdata.backup);
     }
 }
 const shared = new sharedData()//共用データ変数
