@@ -4,6 +4,10 @@
 'use strict';
 class cfgDefault {//エンジン設定の初期値
     constructor() {
+        this.screenSize = {
+            width: 360,
+            height: 480,
+        }
         this.layer = ['effect', 'ui'];
         this.font = {
             default: { name: 'Kaisei Decol', url: 'https://fonts.googleapis.com/css2?family=kaisei+decol&display=swap', custom: false },
@@ -57,62 +61,77 @@ class Game {//エンジン本体
         this.input = new Input();
         this.time = this.delta = 0;
         this.fpsBuffer = new Array(60).fill(0);
+        this.fpsIndex = 0;
+    }
+    setScreenSize(ewidth, height) {
+
     }
     get width() { return this.screenRect.width; };
     get height() { return this.screenRect.height; };
-    start(assets, create) {
-        (async () => {
-            const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
-            await new Promise(resolve => {
-                const wf = document.createElement('script');
-                wf.src = 'https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js';
-                wf.onload = resolve;
-                document.head.appendChild(wf);
-            });
-            const fonts = [];
-            for (const asset of [...assets]) {
-                if (typeof asset === 'string') {
-                    switch (true) {
-                        case Util.isImageFile(asset):
-                            await new Promise(resolve => {
-                                const img = new Image();
-                                img.src = asset;
-                                img.onload(resolve());
-                            });
-                            break;
-                        default:
-                            break;
-                    }
-                } else {
-                    fonts.push(asset);
+    async start(assets, create) {
+        const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
+        await this.loadWebFontLoader();
+        await this.loadAssets(assets);
+        await pageLoadPromise;
+
+        this.input.init();
+        create?.();
+        this.time = performance.now();
+        this.mainloop();
+    }
+    async loadWebFontLoader() {
+        return new Promise(resolve => {
+            const script = document.createElement('script');
+            script.src = 'https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js';
+            script.onload = resolve;
+            document.head.appendChild(script);
+        });
+    }
+    async loadAssets(assets) {
+        const fonts = [];
+        await Promise.all(assets.map(asset => {
+            if (typeof asset === 'string') {
+                switch (true) {
+                    case Util.isImageFile(asset):
+                        return new Promise(resolve => {
+                            const img = new Image();
+                            img.src = asset;
+                            img.onload(resolve);
+                        });
+                    default:
+                        break;
                 }
+            } else {
+                fonts.push(asset);
             }
-            await new Promise(resolve => {
+        }));
+        if (fonts.length) {
+            return new Promise(resolve => {
                 const customs = fonts.filter((f) => f.custom);
                 WebFont.load({
-                    google: { families: fonts.filter((f) => !f.custom).map((f) => f.name) }, custom: { families: customs.map((f) => f.name), urls: customs.map((f) => f.url) }, active: resolve
+                    google: { families: fonts.filter((f) => !f.custom).map((f) => f.name) },
+                    custom: { families: customs.map((f) => f.name), urls: customs.map((f) => f.url) },
+                    active: resolve
                 });
             });
-            await pageLoadPromise.then(() => {
-                this.input.init();
-                create?.();
-                this.time = performance.now();
-                this.mainloop();
-            }).catch(reject => console.error(reject));
-        })();
+        }
     }
     mainloop() {
         const now = performance.now();
         this.delta = Math.min((now - this.time) / 1000.0, 1 / 60);
         this.time = now;
-        this.fpsBuffer.push(this.delta);
-        this.fpsBuffer.shift();
+
+        this.fpsBuffer[this.fpsIndex] = this.delta;
+        this.fpsIndex = (this.fpsIndex + 1) % 60;
+
         this.input.update();
         this.root.baseUpdate();
         Child.clean();
+
         this.layers.before();
         this.root.baseDraw(this.layers.get('main').getContext());
         this.layers.after();
+
         requestAnimationFrame(this.mainloop.bind(this));
     }
     pushScene = scene => this.root.child.add(scene);
@@ -419,6 +438,7 @@ export class Coro {//コルーチン
         });
     }
 }
+export function* through() { return true; }//何もしない
 export function* waitForFrag(func) {//関数の戻り値がtrueになるまで待機
     while (!func()) yield undefined;
     return true;
