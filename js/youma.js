@@ -52,7 +52,9 @@ export const EMOJI = Object.freeze({
     HEART: 'f004',
 });
 class Game {//エンジン本体
-    constructor(width = 360, height = 480) {
+    constructor() {
+        const width = cfg.screenSize.width;
+        const height = cfg.screenSize.height;
         document.body.style.backgroundColor = 'black';
         this.screenRect = new Rect().set(0, 0, width, height);
         this.rangeRect = new Rect().set(0, 0, width, height);
@@ -62,9 +64,6 @@ class Game {//エンジン本体
         this.time = this.delta = 0;
         this.fpsBuffer = new Array(60).fill(0);
         this.fpsIndex = 0;
-    }
-    setScreenSize(ewidth, height) {
-
     }
     get width() { return this.screenRect.width; };
     get height() { return this.screenRect.height; };
