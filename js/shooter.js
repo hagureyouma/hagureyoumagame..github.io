@@ -366,10 +366,7 @@ class Baddie extends Mono {//敵キャラ
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
             case Baddie.spawnType.within:
-                //move test
                 user.setAnime(isAnimeVirtical);
-                //yield* user.move.relative(50, 0, 100, { easing: Ease.sineout, min: 0 });
-                //yield* user.move.relative(-50, 0, 100, { easing: Ease.sineout, min: 0 });
                 break;
             case Baddie.spawnType.top:
                 user.move.set(0, moveSpeed);
@@ -431,9 +428,16 @@ class Baddie extends Mono {//敵キャラ
             }
         },
         zako3: function* (user, pattern, bullets, scene) {
-            const moveSpeed = 50;
+            const moveSpeed = 50;            
             yield* user.routineBasic(user, pattern, moveSpeed, function* () {
                 bullets.mulitWay(user.pos.x, user.pos.y, { color: 'aqua', aim: scene.player });
+                yield* waitForTime(2);
+            });
+        },
+        zako4:function*(user, pattern, bullets, scene){
+            const moveSpeed = 100;            
+            yield* user.routineBasic(user, pattern, moveSpeed, function* () {
+                bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
                 yield* waitForTime(2);
             });
         },
@@ -644,7 +648,7 @@ class BulletBox extends Mono {//弾
     constructor() {
         super(Child);
         this.child.drawlayer = 'effect';
-        this.child.addCreator('bullet', () => new Mono(Guided, Move, Collision, Brush, Bullet));
+        this.child.addCreator('bullet', () => new Mono(Guided, Collision, Brush, Bullet));
     }
     firing(x, y, vx, vy, firstSpeed, accelTime, color, damage, point, removeOffscreen) {
         const bullet = this.child.pool('bullet');
@@ -851,7 +855,8 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * coroStage() {
-        const appears = ['crow', 'dove', 'bigcrow'];
+        //const appears = ['crow', 'dove', 'bigcrow'];
+        const appears = ['obake'];
         const bossName = 'greatcrow';
         const phaseSec = 30;
         const spawnIntervalFactor = 1 * Math.pow(0.9, shared.playdata.total.stage);
@@ -1011,7 +1016,7 @@ class SceneClear extends Mono {//ステージクリア画面
         this.child.add(new Label(text.ko, x, y + (line * 3), { align: 2, valign: 1 }));
         x = game.width * 0.8;
         this.child.add(new Label(stat.stage, x, y, { align: 2, valign: 1 }));
-        this.child.add(new Label(stat.time), x, y + line, { align: 2, valign: 1 });
+        this.child.add(new Label(stat.time, x, y + line, { align: 2, valign: 1 }));
         this.child.add(new Label(stat.point, x, y + (line * 2), { align: 2, valign: 1 }));
         this.child.add(new Label(stat.ko, x, y + (line * 3), { align: 2, valign: 1 }));
         const nextStage = new Label(text.nextStage, game.width * 0.5, game.height - (line * 2), { size: cfg.fontSize.medium, align: 1, valign: 1 })
@@ -1193,7 +1198,7 @@ const datas = {//ゲームデータ
         }
     },
     baddies: {
-        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako1', [Baddies.form.topsingle]),
+        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako4', [Baddies.form.topsingle], { defeatEffect: 'star2' }),
         crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defeatEffect: 'feather' }),
         dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside], { defeatEffect: 'feather' }),
         bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle], { defeatEffect: 'feather' }),
@@ -1264,7 +1269,7 @@ class sharedData {//共用データ
 }
 const shared = new sharedData()//共用データ変数
 //ゲーム実行
-game.start2([cfg.font.default, cfg.font.emoji], () => {
+game.start([cfg.font.default, cfg.font.emoji], () => {
     game.setRange(game.width * 0.25);
     game.input.keybind('z', 'z', { button: 1 });
     game.input.keybind('x', 'x', { button: 0 });

@@ -68,21 +68,26 @@ class Game {//エンジン本体
     get width() { return this.screenRect.width; };
     get height() { return this.screenRect.height; };
     async start(assets, create) {
-        const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
-        await this.loadWebFontLoader();
-        await this.loadAssets(assets);
-        await pageLoadPromise;
+        try {
+            const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
+            await this.loadWebFontLoader().catch(err => console.error('WebFontの読み込み失敗', err));
+            await this.loadAssets(assets).catch(err => console.error('アセットの読み込み失敗', err));
+            await pageLoadPromise;
 
-        this.input.init();
-        create?.();
-        this.time = performance.now();
-        this.mainloop();
+            this.input.init();
+            create?.();
+            this.time = performance.now();
+            this.mainloop();
+        } catch (err) {
+            console.error('なんかエラー起きたよ：', err);
+        }
     }
     async loadWebFontLoader() {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = 'https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js';
             script.onload = resolve;
+            script.onerror = () => reject(new Error('webfont.jsが読み込めなかったよ'));
             document.head.appendChild(script);
         });
     }
@@ -92,10 +97,14 @@ class Game {//エンジン本体
             if (typeof asset === 'string') {
                 switch (true) {
                     case Util.isImageFile(asset):
-                        return new Promise(resolve => {
+                        return new Promise((resolve, reject) => {
                             const img = new Image();
                             img.src = asset;
                             img.onload(resolve);
+                            img.onerror = () => {
+                                console.error(`${asset}が読み込めなかったよ`);
+                                resolve();
+                            }
                         });
                     default:
                         break;
@@ -105,12 +114,16 @@ class Game {//エンジン本体
             }
         }));
         if (fonts.length) {
-            return new Promise(resolve => {
+            return new Promise((resolve, reject) => {
                 const customs = fonts.filter((f) => f.custom);
                 WebFont.load({
                     google: { families: fonts.filter((f) => !f.custom).map((f) => f.name) },
                     custom: { families: customs.map((f) => f.name), urls: customs.map((f) => f.url) },
-                    active: resolve
+                    active: resolve,
+                    inactive: () => {
+                        console.error(`フォントが読み込めなかったよ`);
+                        resolve();
+                    }
                 });
             });
         }
@@ -399,7 +412,7 @@ export class Coro {//コルーチン
     reset() {
         this.generators.clear();
     }
-    isEnable(id) {
+    has(id) {
         return this.generators.has(id);
     }
     start(coro, id = Util.uniqueId()) {
@@ -432,9 +445,7 @@ export class Coro {//コルーチン
         }
     }
     wait(...ids) {
-        return waitForFrag(() => {
-            return ids.every(id => !this.isEnable(id));
-        });
+        return waitForFrag(() => ids.every(id => !this.has(id)));
     }
 }
 export function* through() { return true; }//何もしない
@@ -757,7 +768,7 @@ export class Ease {//イージング
     get percentage() { return this.elaps % 1; }
 }
 export class Guided {//追尾移動コンポーネント
-    static requieds = Pos;
+    static requieds = [Pos,Move];
     constructor() {
         this.reset();
     }
