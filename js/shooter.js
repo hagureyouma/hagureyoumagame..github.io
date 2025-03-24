@@ -29,7 +29,8 @@ import { cfg, EMOJI, game, Util, Mono, Coro, waitForFrag, waitForTime, waitForTi
 
 class Unit {//ユニットコンポーネント
     static requieds = [Coro, Move, Collision, Color];
-    constructor() {
+    constructor(owner) {
+        this.action = new UnitAction(owner);
         this.reset();
     }
     reset() {
@@ -37,6 +38,7 @@ class Unit {//ユニットコンポーネント
         this.isCountKo = this.invincible = this.firing = false;
         this.data = this.scene = this.onBanish = this.onDefeat = undefined;
         this.state = '';
+        this.action.reset();
     }
     set(data, scene) {
         this.reset();
@@ -101,6 +103,51 @@ class Unit {//ユニットコンポーネント
         this.owner.remove();
     }
     get hpRatio() { return this.hp / this.maxHp; };
+    update() {
+        this.action.update();
+    }
+}
+class UnitAction {
+    constructor(owner) {
+        this.owner = owner;
+        this.reset();
+    }
+    reset() {
+        this.setGuided(0, 0, undefined, 0);
+    }
+    setGuided(vx, vy, target, speed) {
+        this.target = target;
+        this.horming = speed;
+        this.baseX = vx;
+        this.baseY = vy;
+        this.targetBeforeX = this.targetBeforeY = 0;
+    }
+    update() {
+        if (this.horming != 0) {
+            const pos = this.owner.pos;
+            const tPos = this.target.pos;
+            let tx = this.targetBeforeX;
+            let ty = this.targetBeforeY;
+            if (this.target.isExist) {
+                tx = this.targetBeforeX = tPos.linkX;
+                ty = this.targetBeforeY = tPos.linkY;
+            }
+            let x = tx - pos.linkX;
+            let y = ty - pos.linkY;
+            let distance = Util.distanse(x, y);
+            if (distance > 0) {
+                x /= distance;
+                y /= distance;
+            }
+            let speed = this.horming + (distance * 0.25);
+            let vx = this.baseX;
+            let vy = this.baseY;
+            if (this.baseX * x >= 0) vx += x * speed;
+            if (this.baseY * y >= 0) vy += y * speed;
+            pos.x += vx * game.delta;
+            pos.y += vy * game.delta;
+        }
+    }
 }
 class Player extends Mono {//自機
     constructor() {
@@ -116,6 +163,7 @@ class Player extends Mono {//自機
         this.moji.set(Util.parseUnicode(data.char), game.width * 0.5, game.height - (data.size * 0.5), { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
         this.bullets = bullets;
+        this.unit.coroDefeat = this.coroDefeat.bind(this);
     }
     maneuver() {
         if (!this.isExist || this.unit.state != 'action') return;
@@ -172,6 +220,11 @@ class Player extends Mono {//自機
         yield* waitForTime(datas.player.damagedInvincibilityTime);
         this.color.restore();
         this.unit.invincible = false;
+    }
+    *coroDefeat() {
+        this.unit.playDefeatEffect();
+        this.unit.onDefeat();
+        this.isExist = false;
     }
 }
 class Baddies extends Mono {//敵キャラ出現
@@ -428,18 +481,19 @@ class Baddie extends Mono {//敵キャラ
             }
         },
         zako3: function* (user, pattern, bullets, scene) {
-            const moveSpeed = 50;            
-            yield* user.routineBasic(user, pattern, moveSpeed, function* () {
-                bullets.mulitWay(user.pos.x, user.pos.y, { color: 'aqua', aim: scene.player });
-                yield* waitForTime(2);
-            });
-        },
-        zako4:function*(user, pattern, bullets, scene){
-            const moveSpeed = 100;            
+            const moveSpeed = 50;
             yield* user.routineBasic(user, pattern, moveSpeed, function* () {
                 bullets.mulitWay(user.pos.linkX, user.pos.linkY, { count: 1, color: 'red' });
                 yield* waitForTime(2);
             });
+        },
+        zako4: function* (user, pattern, bullets, scene) {
+            const moveSpeed = 200;
+            // user.coro.start(user.routineBasicShot(user, pattern, function* () {
+            //     bullets.mulitWay(user.pos.x, user.pos.y);
+            //     yield* waitForTime(2);
+            // }));
+            user.unit.action.setGuided(0, 100, scene.player, 100);
         },
         boss1: function* (user, pattern, bullets, scene) {
             //取り巻き召喚
@@ -855,8 +909,7 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * coroStage() {
-        //const appears = ['crow', 'dove', 'bigcrow'];
-        const appears = ['obake'];
+        const appears = ['crow', 'dove', 'obake', 'bigcrow'];
         const bossName = 'greatcrow';
         const phaseSec = 30;
         const spawnIntervalFactor = 1 * Math.pow(0.9, shared.playdata.total.stage);
@@ -919,8 +972,8 @@ class ScenePlay extends Mono {//プレイ画面
         return shared.playdata.total.remains < 0;
     }
     playerSpawn(isRespawn = false) {
-        this.player?.remove();
-        this.player = this.playerside.child.pool('player');
+        this.player ??= this.playerside.child.pool('player');
+        this.player.isExist = true;
         this.player.set(this, this.playerbullets);
         this.player.unit.onDefeat = () => {
             if (this.playerDefeat()) return;
@@ -1198,7 +1251,7 @@ const datas = {//ゲームデータ
         }
     },
     baddies: {
-        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako4', [Baddies.form.topsingle], { defeatEffect: 'star2' }),
+        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako4', [Baddies.form.randomtop], { defeatEffect: 'star2' }),
         crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defeatEffect: 'feather' }),
         dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside], { defeatEffect: 'feather' }),
         bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle], { defeatEffect: 'feather' }),

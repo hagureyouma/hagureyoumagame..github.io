@@ -378,7 +378,7 @@ export class Mono {//ゲームオブジェクト
     _addMix(mixCtor, isFirst) {
         const name = mixCtor.name.toLowerCase();
         if (name in this) return;
-        const mix = new mixCtor();
+        const mix = new mixCtor(this);
         mix.owner = this;
         this[name] = mix;
         if (isFirst) {
@@ -736,12 +736,12 @@ export class Ease {//イージング
         this.set(0, undefined, false, 0);
     }
     set(time, ease, isLoop, isfirstRand, min) {
-        this.isDelta = false;
-        this.endToDelta = false;
+        this.isDelta = false;//イージングせず素通り
+        this.endToDelta = false;//イージングが終わると素通りになる
         this.time = time;
         this.ease = ease || Ease.liner;
         this.isLoop = isLoop;
-        this.range = 1 - min;
+        this.range = 1 - min;//イージングの範囲（0～1）
         this.ofs = min;
         this.elaps = isfirstRand ? Util.rand(1000) / 1000 : 0;
         this.beforeElaps = 0;
@@ -762,13 +762,13 @@ export class Ease {//イージング
             this.time = 0;
             this.isDelta = this.endToDelta;
         }
-        return (ce * this.range) + (Math.sign(ce) * this.ofs * t);
+        return (ce * this.range) + (Math.sign(ce) * this.ofs * t);//結果を範囲内に収める
     }
     get isActive() { return this.time > 0 || this.isDelta; }
     get percentage() { return this.elaps % 1; }
 }
 export class Guided {//追尾移動コンポーネント
-    static requieds = [Pos,Move];
+    static requieds = [Pos, Move];
     constructor() {
         this.reset();
     }
@@ -858,14 +858,12 @@ export class Moji {//文字コンポーネント
         this.reset();
     }
     reset() {
-        this.text = this.beforeText = '';
-        this.textSplit;
+        this.text = this.beforeText = this.fontStyleCache = this.sizeCacheKey;
+        this.textSplit = undefined;
         this.weight = 'normal';
         this.size = cfg.fontSize.normal;
         this.font = cfg.font.default.name;
         this.baseLine = 'top';
-        this.fontStyleCache;
-        this.sizeCacheKey;
     }
     set(text = '', x = this.owner.pos.x, y = this.owner.pos.y, options = {}) {
         const { size = this.size, color = this.owner.color.value, font = this.font, weight = this.weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = options;
