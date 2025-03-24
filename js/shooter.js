@@ -489,10 +489,6 @@ class Baddie extends Mono {//敵キャラ
         },
         zako4: function* (user, pattern, bullets, scene) {
             const moveSpeed = 200;
-            // user.coro.start(user.routineBasicShot(user, pattern, function* () {
-            //     bullets.mulitWay(user.pos.x, user.pos.y);
-            //     yield* waitForTime(2);
-            // }));
             user.unit.action.setGuided(0, 100, scene.player, 100);
         },
         boss1: function* (user, pattern, bullets, scene) {
@@ -541,7 +537,7 @@ class Baddie extends Mono {//敵キャラ
                 yield* waitForTime(time * 0.5);
             };
             //撃破エフェクト
-            user.coro.defeat = function* () {
+            user.unit.coroDefeat = function* () {
                 killMinions();
                 user.coro.stopAll('defeat');
                 scene.baddiesbullets.child.removeAll();

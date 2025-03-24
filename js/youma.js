@@ -32,7 +32,7 @@ class cfgDefault {//エンジン設定の初期値
             name: 'saveData'
         }
         this.debug = {
-            drawPosSizeRect: true
+            drawPosSizeRect: false
         }
     }
 };
@@ -421,21 +421,24 @@ export class Coro {//コルーチン
         return id;
     }
     startAndGetWaitForFrag(coro, id) {
-        if (!coro) return undefined;
-        return this.wait(this.start(coro, id));
+        const coroId = this.start(coro, id);
+        return coroId ? this.wait(coroId) : undefined;
     }
     stop(id) {
+        const generator = this.generators.get(id);
+        generator?.return();
         this.generators.delete(id);
     }
-    stopAll(...skipids) {
-        const skipset = new Set(skipids);
-        for (const id of this.generators.keys()) {
+    stopAll(...skipids) {        
+        const skipset = new Set(skipids);        
+        for (const [id,generator] of this.generators.entries()) {
             if (skipset.has(id)) continue;
+            generator.return();
             this.generators.delete(id);
         }
     }
     update() {
-        for (const [id, generator] of this.generators.entries()) {
+        for (const [id, generator] of Array.from(this.generators.entries())) {
             let result;
             while (generator) {
                 result = generator.next(result);
