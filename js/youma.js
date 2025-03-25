@@ -425,20 +425,17 @@ export class Coro {//コルーチン
         return coroId ? this.wait(coroId) : undefined;
     }
     stop(id) {
-        const generator = this.generators.get(id);
-        generator?.return();
         this.generators.delete(id);
     }
-    stopAll(...skipids) {        
-        const skipset = new Set(skipids);        
-        for (const [id,generator] of this.generators.entries()) {
+    stopAll(...skipids) {
+        const skipset = new Set(skipids);
+        for (const id of this.generators.keys()) {
             if (skipset.has(id)) continue;
-            generator.return();
             this.generators.delete(id);
         }
     }
     update() {
-        for (const [id, generator] of Array.from(this.generators.entries())) {
+        for (const [id, generator] of this.generators.entries()) {
             let result;
             while (generator) {
                 result = generator.next(result);
@@ -452,6 +449,9 @@ export class Coro {//コルーチン
     }
 }
 export function* through() { return true; }//何もしない
+export function* wait() {//関数の戻り値がtrueになるまで待機
+    while (true) yield undefined;
+}
 export function* waitForFrag(func) {//関数の戻り値がtrueになるまで待機
     while (!func()) yield undefined;
     return true;
@@ -609,6 +609,7 @@ export class Pos {//位置と大きさコンポーネント
     }
     reset() {
         this.set(0, 0, 0, 0);
+        this.scaleX = this.scaleY = 1;
         this.angle = 0;
         this.align = this.valign = 0; //align&valign left top=0,center midle=1,right bottom=2
         this._rect.set(0, 0, 0, 0);
@@ -617,8 +618,8 @@ export class Pos {//位置と大きさコンポーネント
     set(x, y, width, height) {
         this.x = x;
         this.y = y;
-        this.width = width;
-        this.height = height;
+        this._width = width;
+        this._height = height;
         return this;
     }
     draw(ctx) {
@@ -627,6 +628,10 @@ export class Pos {//位置と大きさコンポーネント
         ctx.globalAlpha = 1;
         ctx.strokeRect(this.left, this.top, this.width, this.height);
     }
+    get width() { return this._width * this.scaleX; }
+    get height() { return this._height * this.scaleY; }
+    set width(value) { this._width = value; }
+    set height(value) { this._height = value; }
     get linkX() { return this.x + (this.parent ? this.parent.pos.linkX : 0); }
     get linkY() { return this.y + (this.parent ? this.parent.pos.linkY : 0); }
     get alignCollect() { return this.align * this.width * 0.5; }
@@ -722,6 +727,41 @@ export class Move {//移動コンポーネント
     get isActive() { return this.ease.isActive; }
     get percentage() { return this.ease.percentage; }
 }
+export class Scale {//拡大縮小コンポーネント
+    static requieds = Pos;
+    constructor(owner) {
+        this.owner = owner;
+        this.ease = new Ease();
+        this.reset();
+    }
+    reset() {
+        this.x = 1;
+        this.y = 1;
+    }
+    set(x, y, time = 0, ease = Ease.liner) {
+        this.x = x;
+        this.y = y;
+        if (time <= 0) {
+            const pos = this.owner.pos;
+            pos.scaleX = x;
+            pos.scaleY = y;
+            return;
+        }
+        return this.ease.set(time, ease, false, false, 0);
+    }
+    update() {
+        if (!this.ease.isActive) return;
+        const delta = this.ease.getCurrent();
+        const pos = this.owner.pos;
+        if (this.ease.isActive) {
+            pos.scaleX = this.x * delta;
+            pos.scaleY = this.y * delta;
+        } else {
+            pos.scaleX = this.x;
+            pos.scaleY = this.y;
+        }
+    }
+}
 export class Anime extends Move {//アニメコンポーネント
     constructor() {
         return super();
@@ -755,17 +795,17 @@ export class Ease {//イージング
     getCurrent() {
         if (this.isDelta) return game.delta;
         if (this.time === 0) return 0;
-        const t = game.delta / this.time;
-        this.elaps += t;
+        const addingTime = game.delta / this.time;
+        this.elaps += addingTime;
         if (!this.isLoop && this.elaps >= 1) this.elaps = 1;
-        const e = this.ease(this.elaps);
-        const ce = e - this.beforeEasing;
-        this.beforeEasing = e;
+        const easing = this.ease(this.elaps);
+        const easingDif = easing - this.beforeEasing;
+        this.beforeEasing = easing;
         if (!this.isLoop && this.elaps >= 1) {
             this.time = 0;
             this.isDelta = this.endToDelta;
         }
-        return (ce * this.range) + (Math.sign(ce) * this.ofs * t);//結果を範囲内に収める
+        return (easingDif * this.range) + (Math.sign(easingDif) * this.ofs * addingTime);//結果を範囲内に収める
     }
     get isActive() { return this.time > 0 || this.isDelta; }
     get percentage() { return this.elaps % 1; }
