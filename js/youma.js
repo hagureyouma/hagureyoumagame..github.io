@@ -8,7 +8,6 @@ class cfgDefault {//エンジン設定の初期値
             width: 360,
             height: 480,
         }
-        this.layer = ['effect', 'ui'];
         this.font = {
             default: { name: 'Kaisei Decol', url: 'https://fonts.googleapis.com/css2?family=kaisei+decol&display=swap', custom: false },
             emoji: { name: 'FontAwesome', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css', custom: true }
@@ -32,7 +31,7 @@ class cfgDefault {//エンジン設定の初期値
             name: 'saveData'
         }
         this.debug = {
-            drawPosSizeRect: false
+            drawPosSizeRect: true
         }
     }
 };
@@ -50,6 +49,7 @@ export const EMOJI = Object.freeze({
     FEATHER: 'f52d',
     STAR: 'f005',
     HEART: 'f004',
+    BOMB:'f1e2',
 });
 class Game {//エンジン本体
     constructor() {
@@ -163,11 +163,13 @@ class Game {//エンジン本体
 }
 class Layers {//レイヤーコンテナ
     constructor(width, height) {
-        this.layers = new Map();
+        this.layersMap = new Map();
+        this.layers = [];
         this.width = width;
         this.height = height;
         //レイヤーのCanvasのコンテナ
         const div = this.div = document.createElement('div');
+        div.className = 'game-container';
         div.style.position = 'relative';
         div.style.display = 'block';
         div.style.width = `${width}px`;
@@ -183,25 +185,34 @@ class Layers {//レイヤーコンテナ
         bgctx.fillRect(0, 0, width, height);
         this.add('main');
     }
-    before() { for (const layer of this.layers.values()) layer.before(); }
-    after() { for (const layer of this.layers.values()) layer.after(); }
-    add(names) {
-        const create = (name) => {
-            const layer = new Layer(this.width, this.height);
-            this.div.appendChild(layer.canvas);
-            this.layers.set(name, layer);
-        };
+    before() { for (const layer of this.layers) layer.before(); }
+    after() { for (const layer of this.layers) layer.after(); }
+    add(names, insertBefore = '') {
         if (!Array.isArray(names)) {
-            create(names);
+            this._create(names, insertBefore);
             return;
         }
-        for (const name of names) create(name);
+        for (const name of names) this._create(name, insertBefore);
     }
-    get = (name) => this.layers.get(name);
+    _create(name, insertBefore) {
+        const layer = new Layer(this.width, this.height, name);
+        this.layersMap.set(name, layer);
+        let refIndex = this.layers.length;
+        let refCanvas = null;
+        if (insertBefore.length > 0) {
+            const refLayer = this.get(insertBefore);
+            refIndex = this.layers.indexOf(refLayer);
+            refCanvas = refLayer.canvas;
+        }
+        this.layers.splice(refIndex, 0, layer);
+        this.div.insertBefore(layer.canvas, refCanvas);
+    }
+    get(name) { return this.layersMap.get(name) };
 }
 class Layer {//レイヤー
-    constructor(width, height) {
+    constructor(width, height, name) {
         const canvas = this.canvas = document.createElement('canvas');
+        canvas.className = name;
         canvas.width = width;
         canvas.height = height;
         canvas.style.position = 'absolute';
@@ -754,8 +765,8 @@ export class Scale {//拡大縮小コンポーネント
         const delta = this.ease.getCurrent();
         const pos = this.owner.pos;
         if (this.ease.isActive) {
-            pos.scaleX = this.x * delta;
-            pos.scaleY = this.y * delta;
+            pos.scaleX += this.x * delta;
+            pos.scaleY += this.y * delta;
         } else {
             pos.scaleX = this.x;
             pos.scaleY = this.y;
@@ -838,21 +849,53 @@ export class Collision {//当たり判定コンポーネント
     static requieds = Pos;
     constructor() {
         this._rect = new Rect();
+        this.hitList = new Set();
+        this.reset();
+    }
+    reset() {
+        this.set(0, 0);
         this.isEnable = true;
         this.isVisible = false;
+        this.isCircle = false;
+        this.hitList.clear();
     }
-    reset = () => this.set(0, 0);
-    set = (width, height) => this._rect.set(0, 0, width, height);
+    set(width, height) {
+        this._rect.set(0, 0, width, height);
+    }
     get rect() {
         const pos = this.owner.pos;
         return this._rect.set(Math.floor(pos.linkX - pos.align * this._rect.width * 0.5), Math.floor(pos.linkY - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
-    hit = (obj) => this.isEnable && this.rect.isIntersect(obj.collision.rect); //速度が矩形より大きいとすり抜けるよ
+    hit(obj) {
+        if (!this.isEnable) return false;
+        if (this.hitList.has(obj)) return false;
+        let result = false;
+        if (this.isCircle) {
+            const tPos = this.owner.pos;
+            const oPos = obj.pos;
+            const dx = tPos.linkX - oPos.linkX;
+            const dy = tPos.linkY - oPos.linkY;
+            const ds = dx * dx + dy * dy;
+            const rs = tPos.width * 0.5 + oPos.width * 0.5;
+            result = ds <= rs * rs;
+        } else {
+            result = this.rect.isIntersect(obj.collision.rect); //速度が矩形より大きいとすり抜けるよ
+        }
+        if (result) this.hitList.add(obj);
+        return result;
+    }
     draw(ctx) {
         if (!this.isVisible) return;
         ctx.fillStyle = '#ff000080';
-        const r = this.rect;
-        ctx.fillRect(r.x, r.y, r.width, r.height);
+        if (this.isCircle) {
+            const pos = this.owner.pos;
+            ctx.beginPath();
+            ctx.arc(pos.linkX, pos.linkY, pos.width * 0.5, 0, Brush.rad);
+            ctx.fill();
+        } else {
+            const r = this.rect;
+            ctx.fillRect(r.x, r.y, r.width, r.height);
+        }
     }
 }
 export class Brush {//描画コンポーネント

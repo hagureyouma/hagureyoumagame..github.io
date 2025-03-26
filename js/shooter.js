@@ -61,6 +61,7 @@ class Unit {//ユニットコンポーネント
     banish(damage) {
         this.hp = Math.max(this.hp - damage, 0);
         if (this.hp > 0) {
+            this.owner.color.flash('crimson');
             this.onBanish?.();
             return;
         }
@@ -149,9 +150,8 @@ class UnitAction {
 class Player extends Mono {//自機
     constructor() {
         super(Unit, Moji);
-        this.bullets = undefined;
     }
-    set(scene, bullets) {
+    set(scene) {
         this.resetMix();
         const data = datas.player.data;
         this.unit.set(data, scene);
@@ -160,7 +160,6 @@ class Player extends Mono {//自機
         };
         this.moji.set(Util.parseUnicode(data.char), game.width * 0.5, game.height - (data.size * 0.5), { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
         this.collision.set(this.pos.width * 0.25, this.pos.height * 0.25);
-        this.bullets = bullets;
         this.unit.coroDefeat = this.coroDefeat.bind(this);
     }
     postUpdate() {
@@ -205,10 +204,11 @@ class Player extends Mono {//自機
                 yield undefined;
                 continue;
             }
-            this.bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption);
-            this.bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption2);
-            this.bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption);
-            this.bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption3);
+            const bullets = this.unit.scene.playerbullets;
+            bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption);
+            bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption2);
+            bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption);
+            bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption3);
             yield* waitForTime(0.125);
         }
     }
@@ -216,19 +216,20 @@ class Player extends Mono {//自機
         yield* waitForTime(0.2);
         const speed = datas.player.bulletSpeed;
         const point = 100;
-        const shotOption = { deg: 90, count: 1, speed: speed, color: 'lime', point: point };
-        const shotOption2 = { deg: 85, count: 1, speed: speed, color: 'lime', point: point };
-        const shotOption3 = { deg: 95, count: 1, speed: speed, color: 'lime', point: point };
+
         while (true) {
+            yield undefined;
             if (!game.input.isDown('c')) {
-                yield undefined;
+
                 continue;
             }
-            this.bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption);
-            this.bullets.mulitWay(this.pos.x + 10, this.pos.y, shotOption2);
-            this.bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption);
-            this.bullets.mulitWay(this.pos.x - 10, this.pos.y, shotOption3);
-            yield* waitForTime(0.125);
+            if (shared.playdata.total.bomb <= 0) continue;
+            shared.playdata.total.bomb--;
+
+            const bombs = this.unit.scene.playerBomb;
+            const bomb = bombs.child.pool('bomb');
+            bomb.set(this.pos.linkX, this.pos.linkY);
+            yield* waitForTime(1);
         }
     }
     *coroDamagedInvincible() {
@@ -707,6 +708,7 @@ class Bullet {//弾コンポーネント
     }
     reset() {
         this.set(1, 0)
+        this.through = false;
     }
     set(damage, point) {
         this.damage = damage;
@@ -753,32 +755,24 @@ class BulletBox extends Mono {//弾
         return result;
     }
 }
-class BombContainer extends Mono {
-    constructor() {
-        super(Child);
-        this.child.drawlayer = 'effect';
-        this.child.addCreator('bomb', () => new Bomb());
-    }
-    SetBomb(x, y) {
-        const bomb = this.child.pool('bomb');
-        bomb.pos.x = x;
-        bomb.pos.y = y;
-    }
-
-}
 class Bomb extends Mono {
     constructor() {
-        super(State, Pos, Scale, Collision, Brush, Bullet);
-        this.pos.set(0, 0, game.height * 2, game.height * 2);
+        super(Coro, Pos, Scale, Collision, Brush, Bullet);
+    }
+    set(x, y) {
+        this.pos.set(x, y, game.height * 2, game.height * 2);
         this.pos.align = 1;
         this.pos.valign = 1;
         this.scale.set(0, 0);
+        this.collision.isCircle = true;
         this.brush.circle();
         this.color.setColor('white');
         this.update = () => {
             this.color.alpha = 1 - this.scale.ease.percentage;
         };
-        this.bullet.set(10,100);
+        this.bullet.set(10, 100);
+        this.bullet.isThrough = true;
+        this.coro.start(this.coroDefault());
     }
     *coroDefault() {
         yield* this.scale.set(1, 1, 1, Ease.sineout);
@@ -853,8 +847,11 @@ class ScenePlay extends Mono {//プレイ画面
         this.playerside.child.addCreator('player', () => new Player());
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
+        //ボム
+        this.child.add(this.playerBomb = new Mono(Child));
+        this.playerBomb.child.drawlayer = 'be';
+        this.playerBomb.child.addCreator('bomb', () => new Bomb());
         //弾
-        this.child, add(this.playerBomb = new BombContainer());
         this.child.add(this.playerbullets = new BulletBox());
         this.child.add(this.baddiesbullets = new BulletBox());
         //パーティクル
@@ -871,8 +868,33 @@ class ScenePlay extends Mono {//プレイ画面
         //this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2, { align: 2 }));
         this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${shared.playdata.total.stage}`, game.width - 2, 2, { align: 2 }));
         //残機表示
-        this.ui.child.add(this.remains = new Mono(Child));
-        this.remains.child.addCreator('remains', () => { return new Label(); });
+        this.ui.child.add(this.remains = new Label(() => {
+            const remains = shared.playdata.total.remains;
+            if (remains <= 0) return '';
+            if (remains < 6) {
+                let text = '';
+                for (let i = 0; i < remains; i++) {
+                    text += Util.parseUnicode(datas.player.data.char);
+                }
+                return text;
+            }
+            return `${Util.parseUnicode(datas.player.data.char)}×${remains}`;
+        }, 0, cfg.fontSize.normal * 1.25, { color: datas.player.data.color, font: cfg.font.emoji.name }));
+
+        //ボム所持数表示
+        this.ui.child.add(this.bomb = new Label(() => {
+            const bomb = shared.playdata.total.bomb;
+            if (bomb <= 0) return '';
+            if (bomb < 6) {
+                let text = '';
+                for (let i = 0; i < bomb; i++) {
+                    text += Util.parseUnicode(EMOJI.BOMB);
+                }
+                return text;
+            }
+            return `${Util.parseUnicode(EMOJI.BOMB)}×${bomb}`;
+        }, cfg.fontSize.normal * 1.25 * 6, cfg.fontSize.normal * 1.25, { color: 'black', font: cfg.font.emoji.name }));
+
         //テロップ
         this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.telop.isExist = false;
@@ -896,17 +918,25 @@ class ScenePlay extends Mono {//プレイ画面
             if (!this.player.unit.isBanish()) return;
             this.player.unit.banish(1);
         });
-        //弾の当たり判定
+        //攻撃の当たり判定
         const _bulletHitcheck = (bullet, targets) => {
             targets.child.each((target) => {
                 if (!bullet.collision.hit(target)) return;
                 if (!target.unit.isBanish()) return;
-                target.color.flash('crimson');
                 this.addPoint(bullet.bullet.point);
-                bullet.remove();
+                if (!bullet.bullet.isThrough) bullet.remove();
                 target.unit.banish(bullet.bullet.damage);
             });
         }
+        //ボム
+        this.playerBomb.child.each((bomb) => _bulletHitcheck(bomb, this.baddies));
+        this.playerBomb.child.each((bomb) => {
+            this.baddiesbullets.child.each((bullet) => {
+                if (!bomb.collision.hit(bullet)) return;
+                bullet.remove();
+            });
+        });
+        //弾
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
     }
@@ -1012,17 +1042,16 @@ class ScenePlay extends Mono {//プレイ画面
         shared.playdata.backup = new scoreData(shared.playdata.total);
         this.resetStage();
     }
-    canContinue() {
+    canRespawn() {
         shared.playdata.total.remains--;
-        this.applyRemains();
         return shared.playdata.total.remains < 0;
     }
     playerSpawn(isRespawn = false) {
         this.player ??= this.playerside.child.pool('player');
         this.player.isExist = true;
-        this.player.set(this, this.playerbullets);
+        this.player.set(this);
         this.player.unit.onDefeat = () => {
-            if (this.canContinue()) return;
+            if (this.canRespawn()) return;
             this.coro.start(function* () {
                 yield* waitForTime(1);
                 this.playerSpawn(true);
@@ -1032,7 +1061,6 @@ class ScenePlay extends Mono {//プレイ画面
             this.player.unit.playSpawnEffect();
             this.player.coro.start(this.player.coroDamagedInvincible(), 'special');//リスポーン後の無敵時間
         }
-        this.applyRemains();
     }
     resetStage() {
         this.isClear = false;
@@ -1048,25 +1076,11 @@ class ScenePlay extends Mono {//プレイ画面
         game.layers.get('effect').clearBlur();
         this.telop.isExist = false;
     }
-    applyRemains() {
-        this.remains.child.removeAll();
-        const data = this.player.unit.data;
-        if (shared.playdata.total.remains > 5) {
-            const obj = this.remains.child.pool('remains');
-            obj.moji.set(`${Util.parseUnicode(data.char)}×${shared.playdata.total.remains}`, (cfg.fontSize.normal * 1.25), (cfg.fontSize.normal * 1.25), { color: data.color, font: cfg.font.emoji.name, align: 0, valign: 0 });
-            return;
-        }
-        for (let i = 0; i < shared.playdata.total.remains; i++) {
-            const obj = this.remains.child.pool('remains');
-            obj.moji.set(Util.parseUnicode(data.char), (cfg.fontSize.normal * 1.25) * i, (cfg.fontSize.normal * 1.25), { color: data.color, font: cfg.font.emoji.name, align: 0, valign: 0 });
-        }
-    }
     addPoint(point) {
         shared.playdata.total.point += point;
         if (shared.playdata.total.point <= this.extendedCount) return;
         this.extendedCount += datas.game.extendedScore;
         shared.playdata.total.remains++;
-        this.applyRemains();
     }
     addKo() {
         shared.playdata.total.ko++;
@@ -1319,7 +1333,8 @@ const datas = {//ゲームデータ
     game: {
         highscoreListMax: 10,
         extendedScore: 50000,
-        defaultRemains: 3
+        defaultRemains: 3,
+        defaultBombs: 1
     }
 };
 class scoreData {//スコアデータ
@@ -1329,6 +1344,7 @@ class scoreData {//スコアデータ
         this.point = from?.point || 0;
         this.ko = from?.ko || 0;
         this.remains = from?.remains || datas.game.defaultRemains;
+        this.bomb = from?.bomb || datas.game.defaultBombs;
     }
     dif(other) {
         const result = new scoreData(this);
@@ -1386,7 +1402,8 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, game.width, game.height);
 
-    game.layers.add(cfg.layer);
+    game.layers.add('be', 'main');
+    game.layers.add(['effect', 'ui']);
     game.layers.get('effect').enableBlur();
 
     shared.load(cfg.saveData.name);
