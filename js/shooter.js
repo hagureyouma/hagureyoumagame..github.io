@@ -770,9 +770,7 @@ class Bomb extends Mono {
         this.update = () => {
             this.color.alpha = 1 - this.scale.ease.percentage;
         };
-        this.bullet.set(10, 100);
-        this.bullet.isThrough = true;
-        this.coro.start(this.coroDefault());
+        this.bullet.set(10,100);
     }
     *coroDefault() {
         yield* this.scale.set(1, 1, 1, Ease.sineout);
@@ -847,10 +845,6 @@ class ScenePlay extends Mono {//プレイ画面
         this.playerside.child.addCreator('player', () => new Player());
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
-        //ボム
-        this.child.add(this.playerBomb = new Mono(Child));
-        this.playerBomb.child.drawlayer = 'be';
-        this.playerBomb.child.addCreator('bomb', () => new Bomb());
         //弾
         this.child.add(this.playerbullets = new BulletBox());
         this.child.add(this.baddiesbullets = new BulletBox());
