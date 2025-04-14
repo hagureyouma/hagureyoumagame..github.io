@@ -226,7 +226,7 @@ class Player extends Mono {//自機
             if (shared.playdata.total.bomb <= 0) continue;
             shared.playdata.total.bomb--;
 
-            const bombs = this.unit.scene.playerBomb;
+            const bombs = this.unit.scene.playerbomb;
             const bomb = bombs.child.pool('bomb');
             bomb.set(this.pos.linkX, this.pos.linkY);
             yield* waitForTime(1);
@@ -770,11 +770,18 @@ class Bomb extends Mono {
         this.update = () => {
             this.color.alpha = 1 - this.scale.ease.percentage;
         };
-        this.bullet.set(10,100);
+        this.bullet.set(10, 100);
     }
     *coroDefault() {
         yield* this.scale.set(1, 1, 1, Ease.sineout);
         this.remove();
+    }
+}
+class BombCarrier extends Mono {
+    constructor() {
+        super(Child);
+        this.child.drawlayer = 'be';
+        this.child.addCreator('bomb', () => new Bomb());
     }
 }
 class SceneTitle extends Mono {//タイトル画面
@@ -845,6 +852,9 @@ class ScenePlay extends Mono {//プレイ画面
         this.playerside.child.addCreator('player', () => new Player());
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
+        //ボム
+        this.child.add(this.playerbomb = new Mono(Child));
+        this.playerbomb.child.drawlayer = 'be';
         //弾
         this.child.add(this.playerbullets = new BulletBox());
         this.child.add(this.baddiesbullets = new BulletBox());
@@ -923,8 +933,8 @@ class ScenePlay extends Mono {//プレイ画面
             });
         }
         //ボム
-        this.playerBomb.child.each((bomb) => _bulletHitcheck(bomb, this.baddies));
-        this.playerBomb.child.each((bomb) => {
+        this.playerbomb.child.each((bomb) => _bulletHitcheck(bomb, this.baddies));
+        this.playerbomb.child.each((bomb) => {
             this.baddiesbullets.child.each((bullet) => {
                 if (!bomb.collision.hit(bullet)) return;
                 bullet.remove();
