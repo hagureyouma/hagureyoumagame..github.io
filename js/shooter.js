@@ -226,9 +226,7 @@ class Player extends Mono {//自機
             if (shared.playdata.total.bomb <= 0) continue;
             shared.playdata.total.bomb--;
 
-            const bombs = this.unit.scene.playerbomb;
-            const bomb = bombs.child.pool('bomb');
-            bomb.set(this.pos.linkX, this.pos.linkY);
+            this.unit.scene.playerbomb.drop(this.pos.linkX, this.pos.linkY);
             yield* waitForTime(1);
         }
     }
@@ -708,11 +706,11 @@ class Bullet {//弾コンポーネント
     }
     reset() {
         this.set(1, 0)
-        this.through = false;
     }
-    set(damage, point) {
+    set(damage, point, through = false) {
         this.damage = damage;
         this.point = point;
+        this.through = through;
     }
 }
 class BulletBox extends Mono {//弾
@@ -770,7 +768,8 @@ class Bomb extends Mono {
         this.update = () => {
             this.color.alpha = 1 - this.scale.ease.percentage;
         };
-        this.bullet.set(10, 100);
+        this.bullet.set(10, 100, true);
+        this.coro.start(this.coroDefault(), 'main');
     }
     *coroDefault() {
         yield* this.scale.set(1, 1, 1, Ease.sineout);
@@ -782,6 +781,10 @@ class BombCarrier extends Mono {
         super(Child);
         this.child.drawlayer = 'be';
         this.child.addCreator('bomb', () => new Bomb());
+    }
+    drop(x, y) {
+        const bomb = this.child.pool('bomb');
+        bomb.set(x, y);
     }
 }
 class SceneTitle extends Mono {//タイトル画面
@@ -853,8 +856,7 @@ class ScenePlay extends Mono {//プレイ画面
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
         //ボム
-        this.child.add(this.playerbomb = new Mono(Child));
-        this.playerbomb.child.drawlayer = 'be';
+        this.child.add(this.playerbomb = new BombCarrier());
         //弾
         this.child.add(this.playerbullets = new BulletBox());
         this.child.add(this.baddiesbullets = new BulletBox());
@@ -928,7 +930,7 @@ class ScenePlay extends Mono {//プレイ画面
                 if (!bullet.collision.hit(target)) return;
                 if (!target.unit.isBanish()) return;
                 this.addPoint(bullet.bullet.point);
-                if (!bullet.bullet.isThrough) bullet.remove();
+                if (!bullet.bullet.through) bullet.remove();
                 target.unit.banish(bullet.bullet.damage);
             });
         }
@@ -1212,7 +1214,7 @@ class SceneCredit extends Mono {//クレジット画面
         while (true) {
             yield undefined;
             if (game.input.isPress('z') || game.input.isPress('x')) break;
-            if (this.coro.isEnable(this.coroId)) continue;
+            if (this.coro.has(this.coroId)) continue;
             break;
         }
         game.popScene();
@@ -1338,7 +1340,7 @@ const datas = {//ゲームデータ
         highscoreListMax: 10,
         extendedScore: 50000,
         defaultRemains: 3,
-        defaultBombs: 1
+        defaultBombs: 10
     }
 };
 class scoreData {//スコアデータ
