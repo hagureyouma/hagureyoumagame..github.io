@@ -914,11 +914,8 @@ class ScenePlay extends Mono {//プレイ画面
         yield* waitForTime(time);
         this.telop.isExist = false;
     }
-    update() {
-        //  this.player.maneuver();//プレイヤーの入力受付を優先するからここで受け付けるよ
-    }
     postUpdate() {
-        //キャラの当たり判定
+        //キャラ同士の当たり判定
         this.baddies.child.each((baddie) => {
             if (!this.player.collision.hit(baddie)) return;
             if (!this.player.unit.isBanish()) return;
@@ -1339,7 +1336,7 @@ const datas = {//ゲームデータ
     game: {
         highscoreListMax: 10,
         extendedScore: 50000,
-        defaultRemains: 3,
+        defaultRemains: 0,
         defaultBombs: 10
     }
 };
@@ -1412,6 +1409,6 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
     game.layers.add(['effect', 'ui']);
     game.layers.get('effect').enableBlur();
 
-    shared.load(cfg.saveData.name);
+    //shared.load(cfg.saveData.name);
     game.pushScene(new SceneTitle());
 });
