@@ -68,7 +68,7 @@ class Unit {//ユニットコンポーネント
         this.defeat();
     }
     playEffect(name, x, y) {
-        let { emoji, color, isRandomAngle, count, timeFactor, rotate, isConverge } = datas.unit.effects[name] ??= DataTransfer.unit.star2;
+        let { emoji, color, isRandomAngle, count, timeFactor, rotate, isConverge } = datas.unit.effects[name] ??= datas.unit.star2;
         if (!color || color === '') color = this.data.color;
         const size = this.data.size;
         const particleSize = size * (emoji === '' ? 0.2 : 0.5);
@@ -214,13 +214,9 @@ class Player extends Mono {//自機
     }
     *coroBomb() {
         yield* waitForTime(0.2);
-        const speed = datas.player.bulletSpeed;
-        const point = 100;
-
         while (true) {
-            yield undefined;
             if (!game.input.isDown('c')) {
-
+                yield undefined;
                 continue;
             }
             if (shared.playdata.total.bomb <= 0) continue;
