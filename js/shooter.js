@@ -1091,8 +1091,8 @@ class ScenePlay extends Mono {//プレイ画面
         for (; i < shared.highscores.length; i++) {
             if (shared.highscores[i] === shared.playdata.total) break;
         }
-        if (shared.highscores.length >= datas.game.highscoreListMax) shared.highscores.pop();
-        return [i >= shared.highscores.length, i];
+        if (shared.highscores.length > datas.game.highscoreListMax) shared.highscores.pop();
+        return [i < shared.highscores.length, i];
     }
     get elaps() { return shared.playdata.total.time - shared.playdata.backup.time; }
     get isFailure() { return shared.playdata.total.remains < 0; }
