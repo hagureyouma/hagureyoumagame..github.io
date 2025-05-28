@@ -1004,27 +1004,27 @@ class ScenePlay extends Mono {//プレイ画面
         //     this.baddies.formation(formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, undefined, false);
         //     yield* waitForTime(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor));
         // }
-        yield* this.showTelop('WARNING!', 2, 0.25);
-        {//ステージボス登場
-            const data = datas.baddies[bossName];
-            const formation = data.forms[0];
-            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
-            const waitForBossDefeat = wait();
-            boss.unit.onDefeat = () => {
-                waitForBossDefeat.return();
-            }
-            //ボスのHPゲージ
-            const bossHpGauge = new Gauge();
-            bossHpGauge.pos.set(game.width * 0.5, 56, game.width * 0.9, 10);
-            bossHpGauge.pos.align = 1;
-            bossHpGauge.color = cfg.theme.text;
-            bossHpGauge.max = boss.unit.maxHp;
-            bossHpGauge.watch = () => boss.unit.hp;
-            this.charaUi.child.add(bossHpGauge);
-            //ボスが倒されるまで待機
-            yield* waitForBossDefeat;
-            bossHpGauge.remove();
-        }
+        //yield* this.showTelop('WARNING!', 2, 0.25);
+        // {//ステージボス登場
+        //     const data = datas.baddies[bossName];
+        //     const formation = data.forms[0];
+        //     const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
+        //     const waitForBossDefeat = wait();
+        //     boss.unit.onDefeat = () => {
+        //         waitForBossDefeat.return();
+        //     }
+        //     //ボスのHPゲージ
+        //     const bossHpGauge = new Gauge();
+        //     bossHpGauge.pos.set(game.width * 0.5, 56, game.width * 0.9, 10);
+        //     bossHpGauge.pos.align = 1;
+        //     bossHpGauge.color = cfg.theme.text;
+        //     bossHpGauge.max = boss.unit.maxHp;
+        //     bossHpGauge.watch = () => boss.unit.hp;
+        //     this.charaUi.child.add(bossHpGauge);
+        //     //ボスが倒されるまで待機
+        //     yield* waitForBossDefeat;
+        //     bossHpGauge.remove();
+        // }
         this.isClear = true;
     }
     newGame() {
@@ -1405,6 +1405,6 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
     game.layers.add(['effect', 'ui']);
     game.layers.get('effect').enableBlur();
 
-    //shared.load(cfg.saveData.name);
+    //shared.load(cfg.saveData.name);セーブデータのロード
     game.pushScene(new SceneTitle());
 });
