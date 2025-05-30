@@ -1005,26 +1005,26 @@ class ScenePlay extends Mono {//プレイ画面
         //     yield* waitForTime(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor));
         // }
         //yield* this.showTelop('WARNING!', 2, 0.25);
-        // {//ステージボス登場
-        //     const data = datas.baddies[bossName];
-        //     const formation = data.forms[0];
-        //     const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
-        //     const waitForBossDefeat = wait();
-        //     boss.unit.onDefeat = () => {
-        //         waitForBossDefeat.return();
-        //     }
-        //     //ボスのHPゲージ
-        //     const bossHpGauge = new Gauge();
-        //     bossHpGauge.pos.set(game.width * 0.5, 56, game.width * 0.9, 10);
-        //     bossHpGauge.pos.align = 1;
-        //     bossHpGauge.color = cfg.theme.text;
-        //     bossHpGauge.max = boss.unit.maxHp;
-        //     bossHpGauge.watch = () => boss.unit.hp;
-        //     this.charaUi.child.add(bossHpGauge);
-        //     //ボスが倒されるまで待機
-        //     yield* waitForBossDefeat;
-        //     bossHpGauge.remove();
-        // }
+        {//ステージボス登場
+            const data = datas.baddies[bossName];
+            const formation = data.forms[0];
+            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
+            const waitForBossDefeat = wait();
+            boss.unit.onDefeat = () => {
+                waitForBossDefeat.return();
+            }
+            //ボスのHPゲージ
+            const bossHpGauge = new Gauge();
+            bossHpGauge.pos.set(game.width * 0.5, 56, game.width * 0.9, 10);
+            bossHpGauge.pos.align = 1;
+            bossHpGauge.color = cfg.theme.text;
+            bossHpGauge.max = boss.unit.maxHp;
+            bossHpGauge.watch = () => boss.unit.hp;
+            this.charaUi.child.add(bossHpGauge);
+            //ボスが倒されるまで待機
+            yield* waitForBossDefeat;
+            bossHpGauge.remove();
+        }
         this.isClear = true;
     }
     newGame() {
@@ -1164,16 +1164,19 @@ class SceneHighscore extends Mono {//ハイスコア画面
     }
     _applyScores() {
         this.scoreContainer.child.removeAll();
-        const x = game.width * 0.2;
+        const rankX = game.width * 0.2;
+        const scoreX = game.width * 0.8;
         const y = game.height * 0.25;
         for (let i = 0; i < shared.highscores.length; i++) {
             const score = shared.highscores[i];
-            const label = new Label(`${(i + 1).toString().padStart(2, ' ')}:${score.point}`, x, y + i * (cfg.fontSize.medium * 1.25), { valign: 1 });
+            const labelRank = new Label(`${(i + 1).toString().padStart(2, ' ')}:`, rankX, y + i * (cfg.fontSize.medium * 1.125), { valign: 1 });
+            const labelScore = new Label(`${score.point}`, scoreX, y + i * (cfg.fontSize.medium * 1.125), {align:2, valign: 1 });
             if (this.isNewRecord && i === this.rank) {
-                label.color.setColor(cfg.theme.highlite);
-                label.color.blink(0.5);
+                labelRank.color.setColor(cfg.theme.highlite);
+                labelRank.color.blink(0.5);
             }
-            this.scoreContainer.child.add(label);
+            this.scoreContainer.child.add(labelRank);
+            this.scoreContainer.child.add(labelScore);
         }
     }
     *coroDefault() {
@@ -1405,6 +1408,6 @@ game.start([cfg.font.default, cfg.font.emoji], () => {
     game.layers.add(['effect', 'ui']);
     game.layers.get('effect').enableBlur();
 
-    //shared.load(cfg.saveData.name);セーブデータのロード
+    shared.load(cfg.saveData.name);
     game.pushScene(new SceneTitle());
 });
