@@ -873,7 +873,7 @@ class ScenePlay extends Mono {//プレイ画面
         this.ui.child.add(this.remains = new Label(() => {
             const remains = shared.playdata.total.remains;
             if (remains <= 0) return '';
-            if (remains < 6) {
+            if (remains <= 5) {
                 let text = '';
                 for (let i = 0; i < remains; i++) {
                     text += Util.parseUnicode(datas.player.data.char);
@@ -882,12 +882,11 @@ class ScenePlay extends Mono {//プレイ画面
             }
             return `${Util.parseUnicode(datas.player.data.char)}×${remains}`;
         }, 0, cfg.fontSize.normal * 1.25, { color: datas.player.data.color, font: cfg.font.emoji.name }));
-
         //ボム所持数表示
         this.ui.child.add(this.bomb = new Label(() => {
             const bomb = shared.playdata.total.bomb;
             if (bomb <= 0) return '';
-            if (bomb < 6) {
+            if (bomb <= 5) {
                 let text = '';
                 for (let i = 0; i < bomb; i++) {
                     text += Util.parseUnicode(EMOJI.BOMB);
@@ -896,7 +895,6 @@ class ScenePlay extends Mono {//プレイ画面
             }
             return `${Util.parseUnicode(EMOJI.BOMB)}×${bomb}`;
         }, cfg.fontSize.normal * 1.25 * 6, cfg.fontSize.normal * 1.25, { color: 'black', font: cfg.font.emoji.name }));
-
         //テロップ
         this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.telop.isExist = false;
@@ -1170,7 +1168,7 @@ class SceneHighscore extends Mono {//ハイスコア画面
         for (let i = 0; i < shared.highscores.length; i++) {
             const score = shared.highscores[i];
             const labelRank = new Label(`${(i + 1).toString().padStart(2, ' ')}:`, rankX, y + i * (cfg.fontSize.medium * 1.125), { valign: 1 });
-            const labelScore = new Label(`${score.point}`, scoreX, y + i * (cfg.fontSize.medium * 1.125), {align:2, valign: 1 });
+            const labelScore = new Label(`${score.point}`, scoreX, y + i * (cfg.fontSize.medium * 1.125), { align: 2, valign: 1 });
             if (this.isNewRecord && i === this.rank) {
                 labelRank.color.setColor(cfg.theme.highlite);
                 labelRank.color.blink(0.5);
