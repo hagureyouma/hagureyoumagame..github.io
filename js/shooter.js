@@ -200,8 +200,8 @@ class Player extends Mono {//自機
         const shotOption2 = { deg: 85, count: 1, speed: speed, color: 'lime', point: point };
         const shotOption3 = { deg: 95, count: 1, speed: speed, color: 'lime', point: point };
         while (true) {
+            yield undefined;
             if (!game.input.isDown('z')) {
-                yield undefined;
                 continue;
             }
             const bullets = this.unit.scene.playerbullets;
@@ -215,13 +215,12 @@ class Player extends Mono {//自機
     *coroBomb() {
         yield* waitForTime(0.2);
         while (true) {
+            yield undefined;
             if (!game.input.isDown('c')) {
-                yield undefined;
                 continue;
             }
             if (shared.playdata.total.bomb <= 0) continue;
             shared.playdata.total.bomb--;
-
             this.unit.scene.playerbomb.drop(this.pos.linkX, this.pos.linkY);
             yield* waitForTime(1);
         }
@@ -1266,8 +1265,8 @@ const text = {//テキスト
     ]
 };
 class CharacterData {//キャラデータ
-    constructor(name, char, color, size, hp, point, routine, forms, options = {}) {
-        const { isCountKo = true, defeatEffect = undefined, isOutOfScreenToRemove = false, } = options;
+    constructor(name, char, color, size, hp, point,  options = {}) {
+        const {routine='', forms=undefined,isCountKo = true, defeatEffect = undefined, isOutOfScreenToRemove = false, } = options;
         this.name = name;
         this.char = char;
         this.color = color;
@@ -1316,7 +1315,7 @@ const datas = {//ゲームデータ
         }
     },
     baddies: {
-        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, 'zako4', [Baddies.form.randomtop], { defeatEffect: 'star2' }),
+        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, {routine:'zako4',forms: [Baddies.form.randomtop], defeatEffect: 'star2' }),
         crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defeatEffect: 'feather' }),
         dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside], { defeatEffect: 'feather' }),
         bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle], { defeatEffect: 'feather' }),

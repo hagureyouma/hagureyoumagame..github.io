@@ -49,7 +49,7 @@ export const EMOJI = Object.freeze({
     FEATHER: 'f52d',
     STAR: 'f005',
     HEART: 'f004',
-    BOMB:'f1e2',
+    BOMB: 'f1e2',
 });
 class Game {//エンジン本体
     constructor() {
@@ -944,7 +944,7 @@ export class Moji {//文字コンポーネント
         this.reset();
     }
     reset() {
-        this.text = this.beforeText = this.fontStyleCache = this.sizeCacheKey;
+        this.text = this.beforeText = this.fontStyleCache = this.sizeCacheKey = '';
         this.textSplit = undefined;
         this.weight = 'normal';
         this.size = cfg.fontSize.normal;
@@ -972,10 +972,11 @@ export class Moji {//文字コンポーネント
     get getText() { return typeof this.text === 'function' ? this.text() : this.text.toString(); }
     _applyText() {
         const text = this.getText;
-        if (text === this.beforeText && this.fontStyleCache === this.fontStyle) return;
-        this.fontStyleCache = this.fontStyle;
-        this.sizeCacheKey = text + this.fontStyleCache;
+        const style = this.fontStyle;
+        if (text === this.beforeText && this.fontStyleCache === style) return;
         this.beforeText = text;
+        this.fontStyleCache = style;
+        this.sizeCacheKey = text + style;
         this.textSplit = text.split('\n');
         let textWidth = 0, textHeight = 0
         const ctx = game.layers.get('main').getContext();
@@ -1001,11 +1002,11 @@ export class Moji {//文字コンポーネント
     }
     draw(ctx) {
         ctx.save();
+        this._applyText()
+        this._applyContext(ctx);
         const pos = this.owner.pos;
         ctx.translate(pos.center, pos.middle);
         ctx.rotate(pos.angle * Util.radian);
-        this._applyText()
-        this._applyContext(ctx);
         this.owner.color.applyContext(ctx);
         for (let i = 0; i < this.textSplit.length; i++) {
             ctx.fillText(this.textSplit[i], -(pos.width * 0.5), -(pos.height * 0.5) + (i * this.lineHeight));
