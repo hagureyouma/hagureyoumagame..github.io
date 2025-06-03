@@ -367,6 +367,17 @@ class Rect {//矩形
     isIntersect = (rect) => rect.right > this.x && this.right > rect.x && rect.bottom > this.y && this.bottom > rect.y;
     isOverflow = (rect) => rect.x < this.x || rect.right > this.right || rect.y < this.y || rect.bottom > this.bottom;
 }
+export class Timer {//タイマー
+    constructor() {
+    }
+    set(time) {
+        this.time = time;
+    }
+    next() {
+        this.time -= game.delta;
+        return this.time <= 0;
+    }
+}
 export class Mono {//ゲームオブジェクト
     constructor(...args) {
         this.isExist = this.isActive = true;

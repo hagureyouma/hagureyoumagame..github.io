@@ -25,7 +25,7 @@
 'use strict';
 console.clear();
 
-import { cfg, EMOJI, game, Util, Mono, Coro, wait, waitForFrag, waitForTime, waitForTimeOrFrag, Child, Pos, Scale, Move, Anime, Ease, Guided, Collision, Brush, Tofu, Moji, Label, Particle, Gauge, OutOfRangeToRemove, OutOfScreenToRemove, Menu, Watch, Color, through } from "./youma.js";
+import { cfg, EMOJI, game, Util, Timer, Mono, Coro, wait, waitForFrag, waitForTime, waitForTimeOrFrag, Child, Pos, Scale, Move, Anime, Ease, Guided, Collision, Brush, Tofu, Moji, Label, Particle, Gauge, OutOfRangeToRemove, OutOfScreenToRemove, Menu, Watch, Color, through } from "./youma.js";
 
 class Unit {//ユニットコンポーネント
     static requieds = [Coro, Pos, Scale, Move, Collision, Color];
@@ -34,8 +34,8 @@ class Unit {//ユニットコンポーネント
         this.reset();
     }
     reset() {
-        this.hp = this.maxHp = this.point = 1;
-        this.isCountKo = this.invincible = this.firing = false;
+        this.hp = 1;
+        this.invincible = this.firing = false;
         this.data = this.scene = this.onBanish = this.onDefeat = undefined;
         this.coroSpawn = this.coroSpawnDefault;
         this.coroDefeat = this.coroDefeatDefalut;
@@ -46,14 +46,12 @@ class Unit {//ユニットコンポーネント
         this.scene = scene;
         if (!data) return;
         this.data = data;
-        this.hp = this.maxHp = data.hp;
-        this.point = data.point;
-        this.isCountKo = data.isCountKo;
+        this.hp = data.hp;
         this.owner.addMix(data.isOutOfScreenToRemove ? OutOfScreenToRemove : OutOfRangeToRemove, true);
         this.owner.coro.start(this.coroSpawn(), 'main');
     }
     resetHp() {
-        this.hp = this.maxHp;
+        this.hp = this.data.hp;
     }
     isBanish() {
         return !this.invincible && this.hp > 0;
@@ -80,7 +78,7 @@ class Unit {//ユニットコンポーネント
         return this.playEffect(datas.unit.defaultSpawnEffect, x, y);
     }
     playDefeatEffect(x = this.owner.pos.linkX, y = this.owner.pos.linkY) {
-        return this.playEffect(this.data.defeatEffect === '' ? datas.unit.defaultDefeatEffect : this.data.defeatEffect, x, y);
+        return this.playEffect((!this.data.defeatEffect || this.data.defeatEffect === '') ? datas.unit.defaultDefeatEffect : this.data.defeatEffect, x, y);
     }
     *coroSpawnDefault() {
         if (this.owner.coroAction) yield* this.owner.coroAction();
@@ -96,11 +94,12 @@ class Unit {//ユニットコンポーネント
     }
     defeatRequied() {//撃破時に呼び出す
         this.owner.color.restore();
-        this.scene.addPoint(this.point);
-        if (this.data.isCountKo) this.scene.addKo();
+        this.scene.addPoint(this.data.point);
+        if (this.data.type === CharacterData.type.baddie) this.scene.addKo();
+        if (this.data.type === CharacterData.type.bomb) shared.playdata.total.bomb++;
         this.onDefeat?.();
     }
-    get hpRatio() { return this.hp / this.maxHp; };
+    get hpRatio() { return this.hp / this.data.hp; };
     update() {
         this.action.update();
     }
@@ -237,6 +236,22 @@ class Player extends Mono {//自機
         this.unit.playDefeatEffect();
         this.unit.defeatRequied();
         this.isExist = false;
+    }
+}
+class Item extends Mono {//アイテム
+    constructor() {
+        super(Unit, Anime, Moji);
+    }
+    set(x, y, name, scene) {
+        const data = datas.items[name];
+        this.moji.set(Util.parseUnicode(data.char), x, y, { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
+        this.collision.set(this.pos.width, this.pos.height);
+        this.unit.set(data, scene);
+        return this;
+    }
+    *coroAction() {
+        const moveSpeed = 100;
+        this.move.set(0, moveSpeed);
     }
 }
 class Baddies extends Mono {//敵キャラ出現
@@ -425,7 +440,8 @@ class Baddie extends Mono {//敵キャラ
         }
     }
     *routineBasic(user, pattern, moveSpeed, shot) {
-        user.coro.start(user.routineBasicShot(user, pattern, shot));
+        //射撃
+        if (shot) user.coro.start(user.routineBasicShot(user, pattern, shot));
         //移動
         const [spawnType, isAnimeVirtical] = user.whichSpawnType();
         switch (spawnType) {
@@ -692,7 +708,11 @@ class Baddie extends Mono {//敵キャラ
                 }
                 yield* waitForTime(3);
             }
-        }
+        },
+        item1: function* (user, pattern, bullets, scene) {
+            const moveSpeed = 100;
+            yield* user.routineBasic(user, pattern, moveSpeed, undefined);
+        },
     };
 }
 class Bullet {//弾コンポーネント
@@ -847,9 +867,12 @@ class ScenePlay extends Mono {//プレイ画面
         this.extendedScore = 0;
         //自機
         this.child.add(this.playerside = new Mono(Child));
-        this.playerside.child.addCreator('player', () => new Player());
+        this.playerside.child.addCreator(Player.name, () => new Player());
         //敵キャラ
         this.child.add(this.baddies = new Baddies());
+        //アイテム
+        this.child.add(this.items = new Mono(Child));
+        this.items.child.addCreator(Item.name, () => new Item());
         //ボム
         this.child.add(this.playerbomb = new BombCarrier());
         //弾
@@ -867,38 +890,40 @@ class ScenePlay extends Mono {//プレイ画面
         this.ui.child.drawlayer = 'ui';
         this.ui.child.add(this.textScore = new Label(() => `SCORE ${shared.playdata.total.point} KO ${shared.playdata.total.ko}`, 2, 2));
         //this.ui.child.add(this.fpsView = new Label(() => `FPS: ${game.fps}`, game.width - 2, 2, { align: 2 }));
-        this.ui.child.add(this.fpsView = new Label(() => `STAGE: ${shared.playdata.total.stage}`, game.width - 2, 2, { align: 2 }));
+        this.ui.child.add(this.textStage = new Label(() => `STAGE: ${shared.playdata.total.stage}`, game.width - 2, 2, { align: 2 }));
         //残機表示
-        this.ui.child.add(this.remains = new Label(() => {
-            const remains = shared.playdata.total.remains;
-            if (remains <= 0) return '';
-            if (remains <= 5) {
-                let text = '';
-                for (let i = 0; i < remains; i++) {
-                    text += Util.parseUnicode(datas.player.data.char);
-                }
-                return text;
-            }
-            return `${Util.parseUnicode(datas.player.data.char)}×${remains}`;
-        }, 0, cfg.fontSize.normal * 1.25, { color: datas.player.data.color, font: cfg.font.emoji.name }));
+        this.ui.child.add(this.remains = new Label(() => this.getRemainsText(), 0, cfg.fontSize.normal * 1.25, { color: datas.player.data.color, font: cfg.font.emoji.name }));
         //ボム所持数表示
-        this.ui.child.add(this.bomb = new Label(() => {
-            const bomb = shared.playdata.total.bomb;
-            if (bomb <= 0) return '';
-            if (bomb <= 5) {
-                let text = '';
-                for (let i = 0; i < bomb; i++) {
-                    text += Util.parseUnicode(EMOJI.BOMB);
-                }
-                return text;
-            }
-            return `${Util.parseUnicode(EMOJI.BOMB)}×${bomb}`;
-        }, cfg.fontSize.normal * 1.25 * 6, cfg.fontSize.normal * 1.25, { color: 'black', font: cfg.font.emoji.name }));
+        this.ui.child.add(this.bomb = new Label(() => this.getBombsText(), cfg.fontSize.normal * 1.25 * 6, cfg.fontSize.normal * 1.25, { color: 'black', font: cfg.font.emoji.name }));
         //テロップ
         this.ui.child.add(this.telop = new Label('', game.width * 0.5, game.height * 0.5, { size: cfg.fontSize.medium, color: cfg.theme.highlite, align: 1, valign: 1 }));
         this.telop.isExist = false;
         //デバッグ表示
         this.child.add(this.debug = new Watch());
+    }
+    getRemainsText = () => {
+        const remains = shared.playdata.total.remains;
+        if (remains <= 0) return '';
+        if (remains <= 5) {
+            let text = '';
+            for (let i = 0; i < remains; i++) {
+                text += Util.parseUnicode(datas.player.data.char);
+            }
+            return text;
+        }
+        return `${Util.parseUnicode(datas.player.data.char)}×${remains}`;
+    }
+    getBombsText = () => {
+        const bomb = shared.playdata.total.bomb;
+        if (bomb <= 0) return '';
+        if (bomb <= 5) {
+            let text = '';
+            for (let i = 0; i < bomb; i++) {
+                text += Util.parseUnicode(EMOJI.BOMB);
+            }
+            return text;
+        }
+        return `${Util.parseUnicode(EMOJI.BOMB)}×${bomb}`;
     }
     *showTelop(text, time, blink = 0) {
         this.telop.moji.set(text);
@@ -914,17 +939,22 @@ class ScenePlay extends Mono {//プレイ画面
             if (!this.player.unit.isBanish()) return;
             this.player.unit.banish(1);
         });
+        //プレイヤーとアイテムの当たり判定
+        this.items.child.each((item) => {
+            if (!this.player.collision.hit(item)) return;
+            item.unit.banish(1);
+        });
         //攻撃の当たり判定
         const _bulletHitcheck = (bullet, targets) => {
             targets.child.each((target) => {
-                if (!bullet.collision.hit(target)) return;
                 if (!target.unit.isBanish()) return;
+                if (!bullet.collision.hit(target)) return;
+                target.unit.banish(bullet.bullet.damage);
                 this.addPoint(bullet.bullet.point);
                 if (!bullet.bullet.through) bullet.remove();
-                target.unit.banish(bullet.bullet.damage);
             });
         }
-        //ボム
+        //ボムの当たり判定
         this.playerbomb.child.each((bomb) => _bulletHitcheck(bomb, this.baddies));
         this.playerbomb.child.each((bomb) => {
             this.baddiesbullets.child.each((bullet) => {
@@ -932,7 +962,7 @@ class ScenePlay extends Mono {//プレイ画面
                 bullet.remove();
             });
         });
-        //弾
+        //弾の当たり判定
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
     }
@@ -983,25 +1013,43 @@ class ScenePlay extends Mono {//プレイ画面
         }
     }
     * coroStage() {
+        const items = ['bomb'];
+        const itemSpawnRate = 0.1;
+        const itemSpawnInterval = 5;
         const appears = ['crow', 'dove', 'obake', 'bigcrow'];
         const bossName = 'greatcrow';
         const phaseSec = 30;
         const spawnIntervalFactor = 1 * Math.pow(0.9, shared.playdata.total.stage);
-        //道中
-        // while (this.elaps <= phaseSec || this.baddies.child.liveCount > 0) {
-        //     if (this.elaps > phaseSec) {
-        //         yield undefined;
-        //         continue;
-        //     }
-        //     const baddieName = appears[Util.rand(appears.length - 1)];
-        //     const data = datas.baddies[baddieName];
-        //     const formation = data.forms[Util.rand(data.forms.length - 1)];
-        //     const spawnMax = Math.floor(game.width / data.size) - 2;
-        //     const spawnCount = Util.rand(spawnMax);
-        //     this.baddies.formation(formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, undefined, false);
-        //     yield* waitForTime(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor));
-        // }
-        //yield* this.showTelop('WARNING!', 2, 0.25);
+        {//道中
+            const itemTimer = new Timer();
+            itemTimer.set(itemSpawnInterval);
+            const baddiesTimer = new Timer();
+            baddiesTimer.set(0);
+            while (this.elaps <= phaseSec || this.baddies.child.liveCount > 0) {
+                yield undefined;
+                //アイテム出現
+                if (itemTimer.next()) {
+                    if (Util.rand(100) < itemSpawnRate * 100) {
+                        itemTimer.set(itemSpawnInterval);
+                        const itemName = items[Util.rand(items.length - 1)];
+                        const x = Util.rand(game.width - size) + size * 0.5;
+                        const y = -datas.items[itemName].size;
+                        this.items.child.pool(Item.name).set(x, y, itemName, this);
+                    }
+                }
+                //敵キャラ出現
+                if (this.elaps <= phaseSec && baddiesTimer.next()) {
+                    const baddieName = appears[Util.rand(appears.length - 1)];
+                    const data = datas.baddies[baddieName];
+                    const formation = data.forms[Util.rand(data.forms.length - 1)];
+                    const spawnMax = Math.floor(game.width / data.size) - 2;
+                    const spawnCount = Util.rand(spawnMax);
+                    this.baddies.formation(formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, undefined, false);
+                    baddiesTimer.set(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor));
+                }
+            }
+        }
+        yield* this.showTelop('WARNING!', 2, 0.25);
         {//ステージボス登場
             const data = datas.baddies[bossName];
             const formation = data.forms[0];
@@ -1015,7 +1063,7 @@ class ScenePlay extends Mono {//プレイ画面
             bossHpGauge.pos.set(game.width * 0.5, 56, game.width * 0.9, 10);
             bossHpGauge.pos.align = 1;
             bossHpGauge.color = cfg.theme.text;
-            bossHpGauge.max = boss.unit.maxHp;
+            bossHpGauge.max = boss.unit.data.hp;
             bossHpGauge.watch = () => boss.unit.hp;
             this.charaUi.child.add(bossHpGauge);
             //ボスが倒されるまで待機
@@ -1043,7 +1091,7 @@ class ScenePlay extends Mono {//プレイ画面
         return shared.playdata.total.remains < 0;
     }
     playerSpawn(isRespawn = false) {
-        this.player ??= this.playerside.child.pool('player');
+        this.player ??= this.playerside.child.pool(Player.name);
         this.player.isExist = true;
         this.player.set(this);
         this.player.unit.onDefeat = () => {
@@ -1265,19 +1313,23 @@ const text = {//テキスト
     ]
 };
 class CharacterData {//キャラデータ
-    constructor(name, char, color, size, hp, point,  options = {}) {
-        const {routine='', forms=undefined,isCountKo = true, defeatEffect = undefined, isOutOfScreenToRemove = false, } = options;
+    static type = { player: 'player', baddie: 'baddie', bomb: 'bomb' };
+    constructor(type, name, char, color, size, hp, point, options = {}) {
+        this.type = type;
         this.name = name;
         this.char = char;
         this.color = color;
         this.size = size;
-        this.defeatEffect = defeatEffect;
         this.hp = hp;
         this.point = point;
+
+        const { defeatEffect = undefined, isCountKo = true, isOutOfScreenToRemove = false, routine = '', forms = undefined, bomb = 0 } = options;
+        this.defeatEffect = defeatEffect;
         this.isCountKo = isCountKo;
+        this.isOutOfScreenToRemove = isOutOfScreenToRemove;
         this.routine = routine;
         this.forms = forms;
-        this.isOutOfScreenToRemove = isOutOfScreenToRemove;
+        this.bomb = bomb;
     }
 }
 const datas = {//ゲームデータ
@@ -1315,24 +1367,27 @@ const datas = {//ゲームデータ
         }
     },
     baddies: {
-        obake: new CharacterData('obake', EMOJI.GHOST, 'black', 40, 5, 200, {routine:'zako4',forms: [Baddies.form.randomtop], defeatEffect: 'star2' }),
-        crow: new CharacterData('crow', EMOJI.CROW, '#0B1730', 40, 5, 100, 'zako1', [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop], { defeatEffect: 'feather' }),
-        dove: new CharacterData('dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, 'zako2', [Baddies.form.left, Baddies.form.right, Baddies.form.randomside], { defeatEffect: 'feather' }),
-        bigcrow: new CharacterData('bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, 'zako3', [Baddies.form.topsingle], { defeatEffect: 'feather' }),
-        greatcrow: new CharacterData('greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, 'boss1', [Baddies.form.topsingle], { defeatEffect: 'feather' }),
-        torimakicrow: new CharacterData('torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, 'boss1torimaki', [Baddies.form.within], { defeatEffect: 'feather' }),
+        obake: new CharacterData(CharacterData.type.baddie, 'obake', EMOJI.GHOST, 'black', 40, 5, 200, { defeatEffect: 'star2', routine: 'zako4', forms: [Baddies.form.randomtop] }),
+        crow: new CharacterData(CharacterData.type.baddie, 'crow', EMOJI.CROW, '#0B1730', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako1', forms: [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop] }),
+        dove: new CharacterData(CharacterData.type.baddie, 'dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako2', forms: [Baddies.form.left, Baddies.form.right, Baddies.form.randomside] }),
+        bigcrow: new CharacterData(CharacterData.type.baddie, 'bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, { defeatEffect: 'feather', routine: 'zako3', forms: [Baddies.form.topsingle] }),
+        greatcrow: new CharacterData(CharacterData.type.baddie, 'greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, { defeatEffect: 'feather', routine: 'boss1', forms: [Baddies.form.topsingle] }),
+        torimakicrow: new CharacterData(CharacterData.type.baddie, 'torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, { defeatEffect: 'feather', routine: 'boss1torimaki', forms: [Baddies.form.within] }),
     },
     player: {
-        data: new CharacterData('player', EMOJI.CAT, 'black', 40, 2, 0, '', undefined, { isCountKo: false, defeatEffect: 'star2' }),
+        data: new CharacterData(CharacterData.type.player, 'player', EMOJI.CAT, 'black', 40, 2, 0, { defeatEffect: 'star2', isCountKo: false }),
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
         damagedInvincibilityTime: 1,
     },
+    items: {
+        bomb: new CharacterData(CharacterData.type.bomb, 'bomb', EMOJI.BOMB, 'black', 40, 0, 1000, { defeatEffect: 'star2', isCountKo: false, isOutOfScreenToRemove: true, routine: 'item1', bomb: 1 }),
+    },
     game: {
         highscoreListMax: 10,
         extendedScore: 50000,
-        defaultRemains: 0,
+        defaultRemains: 3,
         defaultBombs: 10
     }
 };
