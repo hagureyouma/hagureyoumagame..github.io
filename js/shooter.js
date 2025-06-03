@@ -238,23 +238,7 @@ class Player extends Mono {//自機
         this.isExist = false;
     }
 }
-class Item extends Mono {//アイテム
-    constructor() {
-        super(Unit, Anime, Moji);
-    }
-    set(x, y, name, scene) {
-        const data = datas.items[name];
-        this.moji.set(Util.parseUnicode(data.char), x, y, { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
-        this.collision.set(this.pos.width, this.pos.height);
-        this.unit.set(data, scene);
-        return this;
-    }
-    *coroAction() {
-        const moveSpeed = 100;
-        this.move.set(0, moveSpeed);
-    }
-}
-class Baddies extends Mono {//敵キャラ出現
+class Spawner {//敵キャラ出現
     static form = {
         within: 'within',
         circle: 'circle',
@@ -272,33 +256,31 @@ class Baddies extends Mono {//敵キャラ出現
         randomside: 'randomside'
     };
     constructor() {
-        super(Child);
-        this.child.addCreator(Baddie.name, () => new Baddie());
         this.formMap = {
-            [Baddies.form.within]: (x, y, n, s, size, space, baseY) => this.singleform(x, y, n, s, size, space, baseY),
-            [Baddies.form.circle]: (x, y, n, s, size, space, baseY) => this.circleform(x, y, n, s, size, space, baseY),
-            [Baddies.form.topsingle]: (x, y, n, s, size, space, baseY) => this.singleform(x, y, n, s, size, space, baseY, true),
-            [Baddies.form.v]: (x, y, n, s, size, space, baseY) => this.vform(x, y, n, s, size, space, baseY),
-            [Baddies.form.delta]: (x, y, n, s, size, space, baseY) => this.vform(x, y, n, s, size, space, baseY, true),
-            [Baddies.form.tri]: (x, y, n, s, size, space, baseY) => this.triform(x, y, n, s, size, space, baseY),
-            [Baddies.form.inverttri]: (x, y, n, s, size, space, baseY) => this.triform(x, y, n, s, size, space, baseY, true),
-            [Baddies.form.trail]: (x, y, n, s, size, space, baseY) => this.trailform(x, y, n, s, size, space, baseY),
-            [Baddies.form.abrest]: (x, y, n, s, size, space, baseY) => this.abrestform(x, y, n, s, size, space, baseY),
-            [Baddies.form.left]: (x, y, n, s, size, space, baseY) => this.sideform(x, y, n, s, size, space, baseY),
-            [Baddies.form.right]: (x, y, n, s, size, space, baseY) => this.sideform(x, y, n, s, size, space, baseY, true),
-            [Baddies.form.randomtop]: (x, y, n, s, size, space, baseY) => this.randomform(x, y, n, s, size, space, baseY),
-            [Baddies.form.randomside]: (x, y, n, s, size, space, baseY) => this.randomform(x, y, n, s, size, space, baseY, true),
+            [Spawner.form.within]: (x, y, n, s, size, space, baseY) => this.singleform(x, y, n, s, size, space, baseY),
+            [Spawner.form.circle]: (x, y, n, s, size, space, baseY) => this.circleform(x, y, n, s, size, space, baseY),
+            [Spawner.form.topsingle]: (x, y, n, s, size, space, baseY) => this.singleform(x, y, n, s, size, space, baseY, true),
+            [Spawner.form.v]: (x, y, n, s, size, space, baseY) => this.vform(x, y, n, s, size, space, baseY),
+            [Spawner.form.delta]: (x, y, n, s, size, space, baseY) => this.vform(x, y, n, s, size, space, baseY, true),
+            [Spawner.form.tri]: (x, y, n, s, size, space, baseY) => this.triform(x, y, n, s, size, space, baseY),
+            [Spawner.form.inverttri]: (x, y, n, s, size, space, baseY) => this.triform(x, y, n, s, size, space, baseY, true),
+            [Spawner.form.trail]: (x, y, n, s, size, space, baseY) => this.trailform(x, y, n, s, size, space, baseY),
+            [Spawner.form.abrest]: (x, y, n, s, size, space, baseY) => this.abrestform(x, y, n, s, size, space, baseY),
+            [Spawner.form.left]: (x, y, n, s, size, space, baseY) => this.sideform(x, y, n, s, size, space, baseY),
+            [Spawner.form.right]: (x, y, n, s, size, space, baseY) => this.sideform(x, y, n, s, size, space, baseY, true),
+            [Spawner.form.randomtop]: (x, y, n, s, size, space, baseY) => this.randomform(x, y, n, s, size, space, baseY),
+            [Spawner.form.randomside]: (x, y, n, s, size, space, baseY) => this.randomform(x, y, n, s, size, space, baseY, true),
         };
     }
-    spawn(x, y, name, pattern, bullets, scene, parent, isPlaySpawnEffect) {
-        const bad = this.child.pool(Baddie.name).set(x, y, name, pattern, bullets, scene, parent);
+    spawn(container, type, x, y, data, pattern, bullets, scene, parent, isPlaySpawnEffect) {
+        const bad = container.child.pool(type).set(x, y, data, pattern, bullets, scene, parent);
         if (isPlaySpawnEffect) bad.unit.playSpawnEffect();
         return bad;
     }
-    formation(type, x, y, n, s, name, pattern, bullets, scene, parent, isPlaySpawnEffect = false) {
+    formation(container, type, formationType, x, y, n, s, data, pattern, bullets, scene, parent, isPlaySpawnEffect = false) {
         //xまたはyは-1にするとランダムになるよ
-        const size = datas.baddies[name].size;
-        return this.formMap[type](x, y, n, s, size, size + size * (s > 0 ? s : 0.25), -size).map(([bx, by]) => this.spawn(bx, by, name, pattern, bullets, scene, parent, isPlaySpawnEffect));
+        const size = data.size;
+        return this.formMap[formationType](x, y, n, s, size, size + size * (s > 0 ? s : 0.25), -size).map(([bx, by]) => this.spawn(container, type, bx, by, data, pattern, bullets, scene, parent, isPlaySpawnEffect));
     }
     singleform(x, y, n, s, size, space, baseY, isTop = false) {
         if (x < 0) x = Util.rand(game.width - size) + size * 0.5;
@@ -398,8 +380,7 @@ class Baddie extends Mono {//敵キャラ
         super(Unit, Anime, Moji);
         this.routine = undefined;
     }
-    set(x, y, name, pattern, bullets, scene, parent) {
-        const data = datas.baddies[name];
+    set(x, y, data, pattern, bullets, scene, parent) {
         this.routine = this.routines[data.routine](this, pattern, bullets, scene);
         this.pos.parent = parent;
         this.moji.set(Util.parseUnicode(data.char), x, y, { size: data.size, color: data.color, font: cfg.font.emoji.name, align: 1, valign: 1 });
@@ -540,7 +521,7 @@ class Baddie extends Mono {//敵キャラ
                 //取り巻きの最大数が違うなら新規に呼び出す
                 if (minions.length != count) {
                     removeMinions();
-                    minions = scene.baddies.formation(Baddies.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user, true);
+                    minions = scene.baddies.formation(Spawner.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user, true);
                     for (let i = 0; i < minions.length; i++) {
                         initMinion(minions, i);
                     }
@@ -868,11 +849,14 @@ class ScenePlay extends Mono {//プレイ画面
         //自機
         this.child.add(this.playerside = new Mono(Child));
         this.playerside.child.addCreator(Player.name, () => new Player());
+
+        this.spawner = new Spawner();
         //敵キャラ
-        this.child.add(this.baddies = new Baddies());
+        this.child.add(this.baddies = new Mono(Child));
+        this.baddies.child.addCreator(Baddie.name, () => new Baddie());
         //アイテム
         this.child.add(this.items = new Mono(Child));
-        this.items.child.addCreator(Item.name, () => new Item());
+        this.items.child.addCreator(Baddie.name, () => new Baddie());
         //ボム
         this.child.add(this.playerbomb = new BombCarrier());
         //弾
@@ -1032,11 +1016,12 @@ class ScenePlay extends Mono {//プレイ画面
                     if (Util.rand(100) < itemSpawnRate * 100) {
                         itemTimer.set(itemSpawnInterval);
                         const itemName = items[Util.rand(items.length - 1)];
-                        const x = Util.rand(game.width - size) + size * 0.5;
-                        const y = -datas.items[itemName].size;
-                        this.items.child.pool(Item.name).set(x, y, itemName, this);
+                        const data = datas.items[itemName];
+                        const formation = Spawner.form.topsingle;
+                        this.spawner.formation(this.items, Baddie.name, formation, -1, -1, 1, -1, data, 0, undefined, this, undefined, false);
                     }
                 }
+                continue;
                 //敵キャラ出現
                 if (this.elaps <= phaseSec && baddiesTimer.next()) {
                     const baddieName = appears[Util.rand(appears.length - 1)];
@@ -1044,7 +1029,7 @@ class ScenePlay extends Mono {//プレイ画面
                     const formation = data.forms[Util.rand(data.forms.length - 1)];
                     const spawnMax = Math.floor(game.width / data.size) - 2;
                     const spawnCount = Util.rand(spawnMax);
-                    this.baddies.formation(formation, -1, -1, spawnCount, -1, data.name, 0, this.baddiesbullets, this, undefined, false);
+                    this.spawner.formation(this.baddies, Baddie.name, formation, -1, -1, spawnCount, -1, data, 0, this.baddiesbullets, this, undefined, false);
                     baddiesTimer.set(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor));
                 }
             }
@@ -1323,9 +1308,8 @@ class CharacterData {//キャラデータ
         this.hp = hp;
         this.point = point;
 
-        const { defeatEffect = undefined, isCountKo = true, isOutOfScreenToRemove = false, routine = '', forms = undefined, bomb = 0 } = options;
+        const { defeatEffect = undefined, isOutOfScreenToRemove = false, routine = '', forms = undefined, bomb = 0 } = options;
         this.defeatEffect = defeatEffect;
-        this.isCountKo = isCountKo;
         this.isOutOfScreenToRemove = isOutOfScreenToRemove;
         this.routine = routine;
         this.forms = forms;
@@ -1367,22 +1351,22 @@ const datas = {//ゲームデータ
         }
     },
     baddies: {
-        obake: new CharacterData(CharacterData.type.baddie, 'obake', EMOJI.GHOST, 'black', 40, 5, 200, { defeatEffect: 'star2', routine: 'zako4', forms: [Baddies.form.randomtop] }),
-        crow: new CharacterData(CharacterData.type.baddie, 'crow', EMOJI.CROW, '#0B1730', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako1', forms: [Baddies.form.v, Baddies.form.delta, Baddies.form.tri, Baddies.form.inverttri, Baddies.form.trail, Baddies.form.abrest, Baddies.form.randomtop] }),
-        dove: new CharacterData(CharacterData.type.baddie, 'dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako2', forms: [Baddies.form.left, Baddies.form.right, Baddies.form.randomside] }),
-        bigcrow: new CharacterData(CharacterData.type.baddie, 'bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, { defeatEffect: 'feather', routine: 'zako3', forms: [Baddies.form.topsingle] }),
-        greatcrow: new CharacterData(CharacterData.type.baddie, 'greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, { defeatEffect: 'feather', routine: 'boss1', forms: [Baddies.form.topsingle] }),
-        torimakicrow: new CharacterData(CharacterData.type.baddie, 'torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, { defeatEffect: 'feather', routine: 'boss1torimaki', forms: [Baddies.form.within] }),
+        obake: new CharacterData(CharacterData.type.baddie, 'obake', EMOJI.GHOST, 'black', 40, 5, 200, { defeatEffect: 'star2', routine: 'zako4', forms: [Spawner.form.randomtop] }),
+        crow: new CharacterData(CharacterData.type.baddie, 'crow', EMOJI.CROW, '#0B1730', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako1', forms: [Spawner.form.v, Spawner.form.delta, Spawner.form.tri, Spawner.form.inverttri, Spawner.form.trail, Spawner.form.abrest, Spawner.form.randomtop] }),
+        dove: new CharacterData(CharacterData.type.baddie, 'dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako2', forms: [Spawner.form.left, Spawner.form.right, Spawner.form.randomside] }),
+        bigcrow: new CharacterData(CharacterData.type.baddie, 'bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, { defeatEffect: 'feather', routine: 'zako3', forms: [Spawner.form.topsingle] }),
+        greatcrow: new CharacterData(CharacterData.type.baddie, 'greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, { defeatEffect: 'feather', routine: 'boss1', forms: [Spawner.form.topsingle] }),
+        torimakicrow: new CharacterData(CharacterData.type.baddie, 'torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, { defeatEffect: 'feather', routine: 'boss1torimaki', forms: [Spawner.form.within] }),
     },
     player: {
-        data: new CharacterData(CharacterData.type.player, 'player', EMOJI.CAT, 'black', 40, 2, 0, { defeatEffect: 'star2', isCountKo: false }),
+        data: new CharacterData(CharacterData.type.player, 'player', EMOJI.CAT, 'black', 40, 2, 0, { defeatEffect: 'star2' }),
         moveSpeed: 300,
         bulletSpeed: 400,
         firelate: 1 / 20,
         damagedInvincibilityTime: 1,
     },
     items: {
-        bomb: new CharacterData(CharacterData.type.bomb, 'bomb', EMOJI.BOMB, 'black', 40, 0, 1000, { defeatEffect: 'star2', isCountKo: false, isOutOfScreenToRemove: true, routine: 'item1', bomb: 1 }),
+        bomb: new CharacterData(CharacterData.type.bomb, 'bomb', EMOJI.BOMB, 'black', 40, 0, 1000, { defeatEffect: 'star2', isOutOfScreenToRemove: true, routine: 'item1', bomb: 1 }),
     },
     game: {
         highscoreListMax: 10,
