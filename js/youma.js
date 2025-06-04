@@ -174,7 +174,8 @@ class Layers {//レイヤーコンテナ
         div.style.display = 'block';
         div.style.width = `${width}px`;
         div.style.height = `${height}px`;
-        div.style.margin = '1rem auto';
+        div.style.padding = 0;
+        div.style.margin = '0';
         document.body.insertAdjacentElement('beforebegin', div);
         //デフォルトのレイヤーを作成
         this.add('bg');
@@ -888,7 +889,7 @@ export class Collision {//当たり判定コンポーネント
         this.hitList.delete(obj);
         return false;
     }
-    draw(ctx) {
+    draw(ctx) {//当たり判定を表示
         if (!this.isVisible) return;
         ctx.fillStyle = '#ff000080';
         if (this.isCircle) {
