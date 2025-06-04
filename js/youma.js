@@ -252,8 +252,9 @@ class Input {//入力
         this.keyIndex = new Map();
         this.keyData = [];
         this.padIndex;
+
     }
-    init() {
+    init(touchEventTarget) {
         addEventListener('keydown', this._keyEvent(true));
         addEventListener('keyup', this._keyEvent(false));
         addEventListener('gamepadconnected', e => this.padIndex = e.gamepad.index);
@@ -262,6 +263,9 @@ class Input {//入力
         this.keybind('right', 'ArrowRight', { button: 15, axes: 1 });
         this.keybind('up', 'ArrowUp', { button: 12, axes: 2 });
         this.keybind('down', 'ArrowDown', { button: 13, axes: 3 });
+        touchEventTarget.addEventListener('touchstart', this._touchEvent, { passive: false });
+        touchEventTarget.addEventListener('touchmove', this._touchEvent, { passive: false });
+        touchEventTarget.addEventListener('touchend', this._touchEvent, { passive: false });
     }
     _keyEvent(frag) {
         return e => {
@@ -270,6 +274,16 @@ class Input {//入力
             if (i === undefined) return;
             this.keyData[i].buffer = frag;
         };
+    }
+    _touchEvent(e) {
+        e.preventDefault();
+        const touches = e.changedTouches[0];
+        const rect = touches.target.getBoundingClientRect();
+        const touchPos = {
+            x: (touches.clientX - rect.left) / rect.width * game.width,
+            y: (touches.clientY - rect.top) / rect.height * game.height
+        }
+        const type = e.type;
     }
     update() {
         for (let i = 0; i < this.keyData.length; i++) {
