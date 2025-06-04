@@ -25,7 +25,7 @@
 'use strict';
 console.clear();
 
-import { cfg, EMOJI, game, Util, Timer, Mono, Coro, wait, waitForFrag, waitForTime, waitForTimeOrFrag, Child, Pos, Scale, Move, Anime, Ease, Guided, Collision, Brush, Tofu, Moji, Label, Particle, Gauge, OutOfRangeToRemove, OutOfScreenToRemove, Menu, Watch, Color, through } from "./youma.js";
+import { cfg, EMOJI, game, Util, Mono, Coro, wait, waitForFrag, waitForTime, waitForTimeOrFrag, Child, Pos, Scale, Move, Anime, Ease, Guided, Collision, Brush, Tofu, Moji, Label, Particle, Gauge, OutOfRangeToRemove, OutOfScreenToRemove, Menu, Watch, Color, through } from "./youma.js";
 
 class Unit {//ユニットコンポーネント
     static requieds = [Coro, Pos, Scale, Move, Collision, Color];
@@ -120,7 +120,7 @@ class UnitAction {
         this.targetBeforeX = this.targetBeforeY = 0;
     }
     update() {
-        if (this.horming != 0) {
+        if (this.horming != 0&& this.target.isExist) {
             const pos = this.owner.pos;
             const tPos = this.target.pos;
             let tx = this.targetBeforeX;
@@ -502,6 +502,7 @@ class Baddie extends Mono {//敵キャラ
         boss1: function* (user, pattern, bullets, scene) {
             //取り巻き召喚
             const minionName = 'torimakicrow';
+            const minionData = datas.baddies[minionName];
             let minions = [];
             const removeMinions = () => {
                 for (const minion of minions) minion?.remove();
@@ -521,7 +522,7 @@ class Baddie extends Mono {//敵キャラ
                 //取り巻きの最大数が違うなら新規に呼び出す
                 if (minions.length != count) {
                     removeMinions();
-                    minions = scene.baddies.formation(Spawner.form.circle, -1, -1, count, distance, name, 0, bullets, scene, user, true);
+                    minions = scene.spawner.formation(scene.baddies,Baddie.name, Spawner.form.circle, -1, -1, count, distance, minionData, 0, bullets, scene, user, true);
                     for (let i = 0; i < minions.length; i++) {
                         initMinion(minions, i);
                     }
@@ -541,7 +542,7 @@ class Baddie extends Mono {//敵キャラ
                     const minion = minions[i];
                     if (minion) continue;
                     const deg = i * baseDeg + degOffset;
-                    minions[i] = scene.baddies.spawn(Util.degToX(deg) * distance, Util.degToY(deg) * distance, name, 0, bullets, scene, user, true);
+                    minions[i] = scene.spawner.spawn(scene.baddies,Baddie.name,Util.degToX(deg) * distance, Util.degToY(deg) * distance, minionData, 0, bullets, scene, user, true);
                     initMinion(minions, i);
                 }
                 yield* waitForTime(time * 0.5);
@@ -692,7 +693,7 @@ class Baddie extends Mono {//敵キャラ
         },
         item1: function* (user, pattern, bullets, scene) {
             const moveSpeed = 100;
-            yield* user.routineBasic(user, pattern, moveSpeed, undefined);
+            user.move.set(0, moveSpeed);
         },
     };
 }
@@ -846,11 +847,10 @@ class ScenePlay extends Mono {//プレイ画面
         super(Coro, Child);
         this.isClear = false;
         this.extendedScore = 0;
+        this.spawner = new Spawner();
         //自機
         this.child.add(this.playerside = new Mono(Child));
         this.playerside.child.addCreator(Player.name, () => new Player());
-
-        this.spawner = new Spawner();
         //敵キャラ
         this.child.add(this.baddies = new Mono(Child));
         this.baddies.child.addCreator(Baddie.name, () => new Baddie());
@@ -923,11 +923,6 @@ class ScenePlay extends Mono {//プレイ画面
             if (!this.player.unit.isBanish()) return;
             this.player.unit.banish(1);
         });
-        //プレイヤーとアイテムの当たり判定
-        this.items.child.each((item) => {
-            if (!this.player.collision.hit(item)) return;
-            item.unit.banish(1);
-        });
         //攻撃の当たり判定
         const _bulletHitcheck = (bullet, targets) => {
             targets.child.each((target) => {
@@ -949,6 +944,11 @@ class ScenePlay extends Mono {//プレイ画面
         //弾の当たり判定
         this.playerbullets.child.each((bullet) => _bulletHitcheck(bullet, this.baddies));
         this.baddiesbullets.child.each((bullet) => _bulletHitcheck(bullet, this.playerside));
+        //自機とアイテムの当たり判定
+        this.items.child.each((item) => {
+            if (!this.player.collision.hit(item)) return;
+            item.unit.banish(1);
+        });
     }
     * coroDefault() {
         game.pushScene(this);
@@ -971,7 +971,7 @@ class ScenePlay extends Mono {//プレイ画面
                 }
                 switch (yield* new SceneConfirm(text.gameover, [text.continue, text.returntitle]).coroDefault()) {
                     case text.continue:
-                        this.continueGame();
+                        this.newGame();
                         break;
                     case text.returntitle:
                         game.popScene();
@@ -983,7 +983,7 @@ class ScenePlay extends Mono {//プレイ画面
                 this.isActive = false;
                 switch (yield* new SceneConfirm(text.pause, [text.resume, text.restart, text.returntitle], { isPause: true, isEnableCancel: true }).coroDefault()) {
                     case text.restart:
-                        this.continueGame();
+                        this.newGame();
                         break;
                     case text.returntitle:
                         game.popScene();
@@ -998,47 +998,41 @@ class ScenePlay extends Mono {//プレイ画面
     }
     * coroStage() {
         const items = ['bomb'];
-        const itemSpawnRate = 0.1;
-        const itemSpawnInterval = 5;
+        const itemSpawnRate = 0.05;
+        let itemSpawnCounter=0;
         const appears = ['crow', 'dove', 'obake', 'bigcrow'];
         const bossName = 'greatcrow';
         const phaseSec = 30;
         const spawnIntervalFactor = 1 * Math.pow(0.9, shared.playdata.total.stage);
+        yield* waitForTime(2);
         {//道中
-            const itemTimer = new Timer();
-            itemTimer.set(itemSpawnInterval);
-            const baddiesTimer = new Timer();
-            baddiesTimer.set(0);
             while (this.elaps <= phaseSec || this.baddies.child.liveCount > 0) {
                 yield undefined;
-                //アイテム出現
-                if (itemTimer.next()) {
-                    if (Util.rand(100) < itemSpawnRate * 100) {
-                        itemTimer.set(itemSpawnInterval);
-                        const itemName = items[Util.rand(items.length - 1)];
-                        const data = datas.items[itemName];
-                        const formation = Spawner.form.topsingle;
-                        this.spawner.formation(this.items, Baddie.name, formation, -1, -1, 1, -1, data, 0, undefined, this, undefined, false);
-                    }
-                }
-                continue;
                 //敵キャラ出現
-                if (this.elaps <= phaseSec && baddiesTimer.next()) {
-                    const baddieName = appears[Util.rand(appears.length - 1)];
-                    const data = datas.baddies[baddieName];
-                    const formation = data.forms[Util.rand(data.forms.length - 1)];
-                    const spawnMax = Math.floor(game.width / data.size) - 2;
-                    const spawnCount = Util.rand(spawnMax);
-                    this.spawner.formation(this.baddies, Baddie.name, formation, -1, -1, spawnCount, -1, data, 0, this.baddiesbullets, this, undefined, false);
-                    baddiesTimer.set(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor));
+                if (this.elaps > phaseSec) continue;
+                const baddieName = appears[Util.rand(appears.length - 1)];
+                const data = datas.baddies[baddieName];
+                const formation = data.forms[Util.rand(data.forms.length - 1)];
+                const spawnMax = Math.floor(game.width / data.size) - 2;
+                const spawnCount = Util.rand(spawnMax);
+                this.spawner.formation(this.baddies, Baddie.name, formation, -1, -1, spawnCount, -1, data, 0, this.baddiesbullets, this, undefined, false);
+                yield* waitForTime(Util.rand(spawnCount * spawnIntervalFactor * 0.5, spawnIntervalFactor))
+                //アイテム出現    
+                if (itemSpawnCounter>=20||Util.rand(100) < itemSpawnRate * 100) {
+                    itemSpawnCounter = 0;
+                    const itemName = items[Util.rand(items.length - 1)];
+                    const data = datas.items[itemName];
+                    const formation = Spawner.form.topsingle;
+                    this.spawner.formation(this.items, Baddie.name, formation, -1, -1, 1, -1, data, 0, undefined, this, undefined, false);
                 }
+                itemSpawnCounter++;
             }
         }
         yield* this.showTelop('WARNING!', 2, 0.25);
         {//ステージボス登場
             const data = datas.baddies[bossName];
             const formation = data.forms[0];
-            const [boss] = this.baddies.formation(formation, game.width * 0.5, -1, 1, -1, data.name, 0, this.baddiesbullets, this, 0, undefined);
+            const [boss] = this.spawner.formation(this.baddies, Baddie.name,formation, game.width * 0.5, -1, 1, -1, data, 0, this.baddiesbullets, this, 0, undefined);
             const waitForBossDefeat = wait();
             boss.unit.onDefeat = () => {
                 waitForBossDefeat.return();
@@ -1060,10 +1054,6 @@ class ScenePlay extends Mono {//プレイ画面
     newGame() {
         shared.playdata.backup = new scoreData();
         shared.playdata.total = new scoreData();
-        this.resetStage();
-    }
-    continueGame() {
-        shared.playdata.total = new scoreData(shared.playdata.backup);
         this.resetStage();
     }
     nextStage() {
@@ -1351,10 +1341,10 @@ const datas = {//ゲームデータ
         }
     },
     baddies: {
-        obake: new CharacterData(CharacterData.type.baddie, 'obake', EMOJI.GHOST, 'black', 40, 5, 200, { defeatEffect: 'star2', routine: 'zako4', forms: [Spawner.form.randomtop] }),
+        obake: new CharacterData(CharacterData.type.baddie, 'obake', EMOJI.GHOST, 'white', 40, 5, 200, { defeatEffect: 'star2', routine: 'zako4', forms: [Spawner.form.randomtop] }),
         crow: new CharacterData(CharacterData.type.baddie, 'crow', EMOJI.CROW, '#0B1730', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako1', forms: [Spawner.form.v, Spawner.form.delta, Spawner.form.tri, Spawner.form.inverttri, Spawner.form.trail, Spawner.form.abrest, Spawner.form.randomtop] }),
         dove: new CharacterData(CharacterData.type.baddie, 'dove', EMOJI.DOVE, '#CBD8E1', 40, 5, 100, { defeatEffect: 'feather', routine: 'zako2', forms: [Spawner.form.left, Spawner.form.right, Spawner.form.randomside] }),
-        bigcrow: new CharacterData(CharacterData.type.baddie, 'bigcrow', EMOJI.CROW, '#0B1730', 80, 20, 100, { defeatEffect: 'feather', routine: 'zako3', forms: [Spawner.form.topsingle] }),
+        bigcrow: new CharacterData(CharacterData.type.baddie, 'bigcrow', EMOJI.CROW, 'navy', 80, 20, 100, { defeatEffect: 'feather', routine: 'zako3', forms: [Spawner.form.topsingle] }),
         greatcrow: new CharacterData(CharacterData.type.baddie, 'greatcrow', EMOJI.CROW, '#0E252F', 120, 100, 2000, { defeatEffect: 'feather', routine: 'boss1', forms: [Spawner.form.topsingle] }),
         torimakicrow: new CharacterData(CharacterData.type.baddie, 'torimakicrow', EMOJI.CROW, '#0B1730', 40, 10, 200, { defeatEffect: 'feather', routine: 'boss1torimaki', forms: [Spawner.form.within] }),
     },
@@ -1366,13 +1356,13 @@ const datas = {//ゲームデータ
         damagedInvincibilityTime: 1,
     },
     items: {
-        bomb: new CharacterData(CharacterData.type.bomb, 'bomb', EMOJI.BOMB, 'black', 40, 0, 1000, { defeatEffect: 'star2', isOutOfScreenToRemove: true, routine: 'item1', bomb: 1 }),
+        bomb: new CharacterData(CharacterData.type.bomb, 'bomb', EMOJI.BOMB, 'black', 20, 0, 1000, { defeatEffect: 'star2', routine: 'item1', bomb: 1 }),
     },
     game: {
         highscoreListMax: 10,
         extendedScore: 50000,
-        defaultRemains: 3,
-        defaultBombs: 10
+        defaultRemains: 2,
+        defaultBombs: 1
     }
 };
 class scoreData {//スコアデータ
@@ -1388,7 +1378,7 @@ class scoreData {//スコアデータ
         const result = new scoreData(this);
         result.time = Math.floor(result.time - other.time);
         result.point -= other.point;
-        result.ko - other.ko;
+        result.ko -= other.ko;
         return result;
     }
 }

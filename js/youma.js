@@ -31,7 +31,7 @@ class cfgDefault {//エンジン設定の初期値
             name: 'saveData'
         }
         this.debug = {
-            drawPosSizeRect: true
+            drawPosSizeRect: false
         }
     }
 };
@@ -366,17 +366,6 @@ class Rect {//矩形
     get bottom() { return this.y + this.height; }
     isIntersect = (rect) => rect.right > this.x && this.right > rect.x && rect.bottom > this.y && this.bottom > rect.y;
     isOverflow = (rect) => rect.x < this.x || rect.right > this.right || rect.y < this.y || rect.bottom > this.bottom;
-}
-export class Timer {//タイマー
-    constructor() {
-    }
-    set(time) {
-        this.time = time;
-    }
-    next() {
-        this.time -= game.delta;
-        return this.time <= 0;
-    }
 }
 export class Mono {//ゲームオブジェクト
     constructor(...args) {
@@ -877,9 +866,8 @@ export class Collision {//当たり判定コンポーネント
         const pos = this.owner.pos;
         return this._rect.set(Math.floor(pos.linkX - pos.align * this._rect.width * 0.5), Math.floor(pos.linkY - pos.valign * this._rect.height * 0.5), this._rect.width, this._rect.height);
     }
-    hit(obj) {
+    hit(obj) { //速度が矩形より大きいとすり抜けるよ        
         if (!this.isEnable) return false;
-        if (this.hitList.has(obj)) return false;
         let result = false;
         if (this.isCircle) {
             const tPos = this.owner.pos;
@@ -890,10 +878,15 @@ export class Collision {//当たり判定コンポーネント
             const rs = tPos.width * 0.5 + oPos.width * 0.5;
             result = ds <= rs * rs;
         } else {
-            result = this.rect.isIntersect(obj.collision.rect); //速度が矩形より大きいとすり抜けるよ
+            result = this.rect.isIntersect(obj.collision.rect);
         }
-        if (result) this.hitList.add(obj);
-        return result;
+        if (result) {
+            if (this.hitList.has(obj)) return false;
+            this.hitList.add(obj);
+            return true;
+        }
+        this.hitList.delete(obj);
+        return false;
     }
     draw(ctx) {
         if (!this.isVisible) return;
