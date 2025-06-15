@@ -74,7 +74,7 @@ class Game {//エンジン本体
             await this.loadAssets(assets).catch(err => console.error('アセットの読み込み失敗', err));
             await pageLoadPromise;
 
-            this.input.init();
+            this.input.init(this.layers.div);
             create?.();
             this.time = performance.now();
             this.mainloop();
@@ -253,6 +253,13 @@ class Input {//入力
         this.keyData = [];
         this.padIndex;
 
+        this.touch={
+            x: 0,
+            y: 0,
+            isStart:{current: false, buffer: false},
+            isMove: {current: false, buffer: false},
+            isEnd: {current: false, buffer: false},
+        }
     }
     init(touchEventTarget) {
         addEventListener('keydown', this._keyEvent(true));
@@ -279,11 +286,19 @@ class Input {//入力
         e.preventDefault();
         const touches = e.changedTouches[0];
         const rect = touches.target.getBoundingClientRect();
-        const touchPos = {
+        this.touchPos = {
             x: (touches.clientX - rect.left) / rect.width * game.width,
             y: (touches.clientY - rect.top) / rect.height * game.height
         }
-        const type = e.type;
+        switch (e.type) {
+            case 'touchstart':
+                this.isTouchStartBuffer = true;
+            case 'touchmove':
+                this.isTouchMoveBuffer = true;
+            case 'touchend':
+                this.isTouchEndBuffer = true;
+        }
+        console.log(e.type);
     }
     update() {
         for (let i = 0; i < this.keyData.length; i++) {
@@ -304,6 +319,12 @@ class Input {//入力
                 }
             }
         }
+        this.isTouchStart = this.isTouchStartBuffer;
+        this.isTouchMove = this.isTouchMoveBuffer;
+        this.isTouchEnd = this.isTouchEndBuffer;
+        this.isTouchStartBuffer = false;
+        this.isTouchMoveBuffer = false;
+        this.isTouchEndBuffer = false;
     }
     keybind(name, key, { button = -1, axes = -1 } = {}) {
         const index = this.nameIndex.size;
