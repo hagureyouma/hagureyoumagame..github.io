@@ -336,6 +336,15 @@ class Input {//入力
     isPress = (name) => this.keyData[this.nameIndex.get(name)].current && !this.keyData[this.nameIndex.get(name)].before;
     isUp = (name) => !this.keyData[this.nameIndex.get(name)].current && this.keyData[this.nameIndex.get(name)].before;
 }
+class VirtualPad{
+    constructor(){
+
+    }
+    init(gameContainer){
+const vpad=document.createElement('div');
+vpad.id='vpad';
+    }
+}
 export class Util {//小物
     static naname = 0.71;
     static radian = Math.PI / 180;
