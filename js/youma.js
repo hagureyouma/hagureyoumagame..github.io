@@ -253,12 +253,12 @@ class Input {//入力
         this.keyData = [];
         this.padIndex;
 
-        this.touch={
+        this.touch = {
             x: 0,
             y: 0,
-            isStart:{current: false, buffer: false},
-            isMove: {current: false, buffer: false},
-            isEnd: {current: false, buffer: false},
+            isStart: { current: false, buffer: false },
+            isMove: { current: false, buffer: false },
+            isEnd: { current: false, buffer: false },
         }
     }
     init(touchEventTarget) {
@@ -336,13 +336,22 @@ class Input {//入力
     isPress = (name) => this.keyData[this.nameIndex.get(name)].current && !this.keyData[this.nameIndex.get(name)].before;
     isUp = (name) => !this.keyData[this.nameIndex.get(name)].current && this.keyData[this.nameIndex.get(name)].before;
 }
-class VirtualPad{
-    constructor(){
+class VirtualPad {
+    constructor() {
 
     }
-    init(gameContainer){
-const vpad=document.createElement('div');
-vpad.id='vpad';
+    init(gameContainer) {
+        const vpad = document.createElement('div');
+        vpad.id = 'vpad';
+        gameContainer.appendChild(vpad);
+
+        const stickBase = document.createElement('div');
+        stickBase.id='stickBase';
+        vpad.appendChild(stickBase);
+
+        const stickKnob = document.createElement('div');
+        stickKnob.id='stickKnob';
+        vpad.appendChild(stickKnob);
     }
 }
 export class Util {//小物
