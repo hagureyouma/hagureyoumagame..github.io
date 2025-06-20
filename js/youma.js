@@ -168,15 +168,15 @@ class Layers {//レイヤーコンテナ
         this.width = width;
         this.height = height;
         //レイヤーのCanvasのコンテナ
-        const div = this.div = document.createElement('div');
-        div.className = 'game-container';
-        div.style.position = 'relative';
-        div.style.display = 'block';
-        div.style.width = `${width}px`;
-        div.style.height = `${height}px`;
-        div.style.padding = 0;
-        div.style.margin = '0';
-        document.body.insertAdjacentElement('beforebegin', div);
+        const gameContainer = this.div = document.createElement('div');
+        gameContainer.className = 'game-container';
+        gameContainer.style.position = 'relative';
+        gameContainer.style.display = 'block';
+        gameContainer.style.width = `${width}px`;
+        gameContainer.style.height = `${height}px`;
+        gameContainer.style.padding = 0;
+        gameContainer.style.margin = '0';
+        document.body.insertAdjacentElement('beforebegin', gameContainer);
         //デフォルトのレイヤーを作成
         this.add('bg');
         const bg = this.get('bg');
@@ -185,6 +185,7 @@ class Layers {//レイヤーコンテナ
         bgctx.fillStyle = 'black';
         bgctx.fillRect(0, 0, width, height);
         this.add('main');
+        this.vpad = new VirtualPad(gameContainer);
     }
     before() { for (const layer of this.layers) layer.before(); }
     after() { for (const layer of this.layers) layer.after(); }
@@ -337,21 +338,31 @@ class Input {//入力
     isUp = (name) => !this.keyData[this.nameIndex.get(name)].current && this.keyData[this.nameIndex.get(name)].before;
 }
 class VirtualPad {
-    constructor() {
-
+    constructor(gameContainer) {
+        this.init(gameContainer);
     }
     init(gameContainer) {
         const vpad = document.createElement('div');
         vpad.id = 'vpad';
         gameContainer.appendChild(vpad);
 
+        const stickContainer = document.createElement('div');
+        stickContainer.id = 'stickContainer';
+        stickContainer.style.position = 'fixed';
+        stickContainer.style.bottom = '50px';
+        stickContainer.style.left = '50px';
+        stickContainer.style.width = '150px';
+        stickContainer.style.height = '150px';
+        stickContainer.style.touchAction = 'none';
+        gameContainer.appendChild(stickContainer);
+
         const stickBase = document.createElement('div');
-        stickBase.id='stickBase';
-        vpad.appendChild(stickBase);
+        stickBase.id = 'stickBase';
+        stickContainer.appendChild(stickBase);
 
         const stickKnob = document.createElement('div');
-        stickKnob.id='stickKnob';
-        vpad.appendChild(stickKnob);
+        stickKnob.id = 'stickKnob';
+        stickContainer.appendChild(stickKnob);
     }
 }
 export class Util {//小物
