@@ -354,6 +354,7 @@ class VirtualPad {
         stickContainer.style.width = '150px';
         stickContainer.style.height = '150px';
         stickContainer.style.touchAction = 'none';
+        stickContainer.style.background='rgba(255,255,255,0.5)';
         gameContainer.appendChild(stickContainer);
 
         const stickBase = document.createElement('div');
