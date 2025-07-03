@@ -346,24 +346,27 @@ class VirtualPad {
         vpad.id = 'vpad';
         gameContainer.appendChild(vpad);
 
-        const stickContainer = document.createElement('div');
-        stickContainer.id = 'stickContainer';
-        stickContainer.style.position = 'fixed';
-        stickContainer.style.bottom = '50px';
-        stickContainer.style.left = '50px';
-        stickContainer.style.width = '150px';
-        stickContainer.style.height = '150px';
-        stickContainer.style.touchAction = 'none';
-        stickContainer.style.background='rgba(255,255,255,0.5)';
-        gameContainer.appendChild(stickContainer);
-
         const stickBase = document.createElement('div');
         stickBase.id = 'stickBase';
-        stickContainer.appendChild(stickBase);
+        stickBase.style.position = 'fixed';
+        stickBase.style.bottom = '50px';
+        stickBase.style.left = '50px';
+        stickBase.style.width = '150px';
+        stickBase.style.height = '150px';
+        stickBase.style.touchAction = 'none';
+        stickBase.style.background = 'rgba(255,255,255,0.5)';
+        vpad.appendChild(stickBase);
 
         const stickKnob = document.createElement('div');
         stickKnob.id = 'stickKnob';
-        stickContainer.appendChild(stickKnob);
+        stickKnob.style.position = 'absolute';
+        stickKnob.style.top = '50%';
+        stickKnob.style.left = '50%';
+        stickKnob.style.width = '50px';
+        stickKnob.style.height = '50px';
+        stickKnob.style.pointerEvents='none';
+        stickKnob.style.background = 'rgba(255,255,255,0.5)';
+        stickBase.appendChild(stickKnob);
     }
 }
 export class Util {//小物
