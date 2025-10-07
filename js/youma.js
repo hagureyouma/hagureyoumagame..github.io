@@ -53,11 +53,11 @@ export const EMOJI = Object.freeze({
 });
 class Game {//エンジン本体
     constructor() {
+        document.body.style.backgroundColor = 'black';
         const width = cfg.screenSize.width;
         const height = cfg.screenSize.height;
-        document.body.style.backgroundColor = 'black';
-        this.screenRect = new Rect().set(0, 0, width, height);
-        this.rangeRect = new Rect().set(0, 0, width, height);
+        this.screenRect = new Rect(0, 0, width, height);
+        this.rangeRect = new Rect(0, 0, width, height);
         this.layers = new Layers(width, height);
         this.root = new Mono(Coro, Child);
         this.input = new Input();
@@ -167,17 +167,22 @@ class Layers {//レイヤーコンテナ
         this.layers = [];
         this.width = width;
         this.height = height;
-        //レイヤーのCanvasのコンテナ
-        const gameContainer = this.div = document.createElement('div');
-        gameContainer.className = 'game-container';
-        gameContainer.style.position = 'relative';
-        gameContainer.style.display = 'block';
-        gameContainer.style.width = `${width}px`;
-        gameContainer.style.height = `${height}px`;
-        gameContainer.style.padding = 0;
-        gameContainer.style.margin = '0';
-        document.body.insertAdjacentElement('beforebegin', gameContainer);
-        //デフォルトのレイヤーを作成
+        this._createContainer();
+        this._createDefaultLayer();
+        this.vpad = new VirtualPad(gameContainer);
+    }
+    _createContainer() {
+        const div = this.div = document.createElement('div');
+        div.className = 'game-container';
+        div.style.position = 'relative';
+        div.style.display = 'block';
+        div.style.width = `${width}px`;
+        div.style.height = `${height}px`;
+        div.style.padding = 0;
+        div.style.margin = '0';
+        document.body.insertAdjacentElement('beforebegin', div);
+    }
+    _createDefaultLayer() {
         this.add('bg');
         const bg = this.get('bg');
         bg.isUpdate = false;
@@ -185,7 +190,6 @@ class Layers {//レイヤーコンテナ
         bgctx.fillStyle = 'black';
         bgctx.fillRect(0, 0, width, height);
         this.add('main');
-        this.vpad = new VirtualPad(gameContainer);
     }
     before() { for (const layer of this.layers) layer.before(); }
     after() { for (const layer of this.layers) layer.after(); }
@@ -364,7 +368,7 @@ class VirtualPad {
         stickKnob.style.left = '50%';
         stickKnob.style.width = '50px';
         stickKnob.style.height = '50px';
-        stickKnob.style.pointerEvents='none';
+        stickKnob.style.pointerEvents = 'none';
         stickKnob.style.background = 'rgba(255,255,255,0.5)';
         stickBase.appendChild(stickKnob);
     }
@@ -421,8 +425,8 @@ export class Util {//小物
     static deleteSave(key) { localStorage.removeItem(key); }
 }
 class Rect {//矩形
-    constructor() {
-        this.set(0, 0, 0, 0);
+    constructor(x = 0, y = 0, width = 0, height = 0) {
+        this.set(x, y, width, height);
     }
     set(x, y, width, height) {
         this.x = x;
@@ -529,7 +533,7 @@ export class Coro {//コルーチン
     }
 }
 export function* through() { return true; }//何もしない
-export function* wait() {//関数の戻り値がtrueになるまで待機
+export function* wait() {//無限ループ
     while (true) yield undefined;
 }
 export function* waitForFrag(func) {//関数の戻り値がtrueになるまで待機
