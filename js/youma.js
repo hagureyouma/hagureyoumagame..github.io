@@ -114,6 +114,8 @@ class Game {//エンジン本体
             }
         }));
         if (fonts.length) {
+            const a=new Mono();
+            a.
             return new Promise((resolve, reject) => {
                 const customs = fonts.filter((f) => f.custom);
                 WebFont.load({

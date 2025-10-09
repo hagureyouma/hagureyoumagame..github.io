@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "es6",
+    "checkJs": true,
+    "moduleResolution": "bundler"  // ブラウザ構成ならこれが最適
+  },
+  "include": ["./*.js"]
+}
