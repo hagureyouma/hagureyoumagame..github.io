@@ -114,8 +114,7 @@ class Game {//エンジン本体
             }
         }));
         if (fonts.length) {
-            const a=new Mono();
-            a.
+            const a=new Mono();            
             return new Promise((resolve, reject) => {
                 const customs = fonts.filter((f) => f.custom);
                 WebFont.load({
@@ -448,7 +447,7 @@ export class Mono {//ゲームオブジェクト
         this.isRemoved = false;
         this.mixs = [];
         this.childIndex = -1;
-        this.remove;
+        this.remove=undefined;
         this.addMix(args);
     }
     addMix(mixCtor, isFirst) {
