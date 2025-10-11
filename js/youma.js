@@ -114,7 +114,7 @@ class Game {//エンジン本体
             }
         }));
         if (fonts.length) {
-            const a=new Mono();            
+            const a=new Mono();          
             return new Promise((resolve, reject) => {
                 const customs = fonts.filter((f) => f.custom);
                 WebFont.load({
@@ -168,22 +168,22 @@ class Layers {//レイヤーコンテナ
         this.layers = [];
         this.width = width;
         this.height = height;
-        this._createContainer();
-        this._createDefaultLayer();
-        this.vpad = new VirtualPad(gameContainer);
+        this._createContainer(width,height);
+        this._createDefaultLayer(width,height);
+        //this.vpad = new VirtualPad(gameContainer);
     }
-    _createContainer() {
+    _createContainer(width,height) {
         const div = this.div = document.createElement('div');
         div.className = 'game-container';
         div.style.position = 'relative';
         div.style.display = 'block';
         div.style.width = `${width}px`;
         div.style.height = `${height}px`;
-        div.style.padding = 0;
+        div.style.padding = '0';
         div.style.margin = '0';
         document.body.insertAdjacentElement('beforebegin', div);
     }
-    _createDefaultLayer() {
+    _createDefaultLayer(width, height) {
         this.add('bg');
         const bg = this.get('bg');
         bg.isUpdate = false;
