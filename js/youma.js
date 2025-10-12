@@ -67,7 +67,7 @@ class Game {//エンジン本体
     }
     get width() { return this.screenRect.width; };
     get height() { return this.screenRect.height; };
-    async start(assets, create) {
+    async start(create, assets = []) {
         try {
             const pageLoadPromise = new Promise(resolve => addEventListener('load', resolve));
             await this.loadWebFontLoader().catch(err => console.error('WebFontの読み込み失敗', err));
@@ -92,7 +92,7 @@ class Game {//エンジン本体
         });
     }
     async loadAssets(assets) {
-        const fonts = [];
+        const fonts = new Set([cfg.font.default, cfg.font.emoji]);
         await Promise.all(assets.map(asset => {
             if (typeof asset === 'string') {
                 switch (true) {
@@ -110,11 +110,10 @@ class Game {//エンジン本体
                         break;
                 }
             } else {
-                fonts.push(asset);
+                fonts.add(asset);
             }
         }));
-        if (fonts.length) {
-            const a=new Mono();          
+        if (fonts.) {
             return new Promise((resolve, reject) => {
                 const customs = fonts.filter((f) => f.custom);
                 WebFont.load({
@@ -168,28 +167,28 @@ class Layers {//レイヤーコンテナ
         this.layers = [];
         this.width = width;
         this.height = height;
-        this._createContainer(width,height);
-        this._createDefaultLayer(width,height);
+        this._createContainer();
+        this._createDefaultLayer();
         //this.vpad = new VirtualPad(gameContainer);
     }
-    _createContainer(width,height) {
+    _createContainer() {
         const div = this.div = document.createElement('div');
         div.className = 'game-container';
         div.style.position = 'relative';
         div.style.display = 'block';
-        div.style.width = `${width}px`;
-        div.style.height = `${height}px`;
+        div.style.width = `${this.width}px`;
+        div.style.height = `${this.height}px`;
         div.style.padding = '0';
         div.style.margin = '0';
         document.body.insertAdjacentElement('beforebegin', div);
     }
-    _createDefaultLayer(width, height) {
+    _createDefaultLayer() {
         this.add('bg');
         const bg = this.get('bg');
         bg.isUpdate = false;
         const bgctx = bg.getContext();
         bgctx.fillStyle = 'black';
-        bgctx.fillRect(0, 0, width, height);
+        bgctx.fillRect(0, 0, this.width, this.height);
         this.add('main');
     }
     before() { for (const layer of this.layers) layer.before(); }
@@ -447,7 +446,7 @@ export class Mono {//ゲームオブジェクト
         this.isRemoved = false;
         this.mixs = [];
         this.childIndex = -1;
-        this.remove=undefined;
+        this.remove = undefined;
         this.addMix(args);
     }
     addMix(mixCtor, isFirst) {

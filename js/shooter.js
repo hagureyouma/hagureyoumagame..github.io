@@ -1417,7 +1417,7 @@ class sharedData {//共用データ
 }
 const shared = new sharedData()//共用データ変数
 //ゲーム実行
-game.start([cfg.font.default, cfg.font.emoji], () => {
+game.start(() => {
     game.setRange(game.width * 0.25);
     game.input.keybind('z', 'z', { button: 1 });
     game.input.keybind('x', 'x', { button: 0 });
