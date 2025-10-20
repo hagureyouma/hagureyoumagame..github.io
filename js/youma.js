@@ -1121,10 +1121,15 @@ export class Moji2 {//文字コンポーネント
         this.owner.color.setColor(color);
     }
     get text() { return typeof this._text === 'function' ? this._text() : this._text.toString(); }
-    set text(t) {
-        this._text = t;
-
+    set text(v) {
+        this._text = v;
+        this._applyText();
     }
+    get weight(){return this._weight}
+    set weight(v){this._weight=v;
+        this._applyText();
+    }
+    get size(){}
     get lineSpace() { return this._size * 0.25; }
     get lineHeight() { return this._size + this.lineSpace; }
     get fontStyle() { return `${this._weight} ${this._size}px '${this._font}'`; }
