@@ -1021,7 +1021,7 @@ export class Moji {//文字コンポーネント
         this.reset();
     }
     reset() {
-        this.text = this.beforeText = this.fontStyleCache = this.sizeCacheKey = '';
+        this.text = this.beforeText = this.fontStyle = this.sizeCacheKey = '';
         this.textSplit = undefined;
         this.weight = 'normal';
         this.size = cfg.fontSize.normal;
@@ -1034,6 +1034,7 @@ export class Moji {//文字コンポーネント
         this.weight = weight;
         this.size = size;
         this.font = font;
+        this.fontStyle = `${this.weight} ${this.size}px '${this.font}'`;
         this._applyText();
         const pos = this.owner.pos;
         pos.x = x;
@@ -1045,102 +1046,12 @@ export class Moji {//文字コンポーネント
     }
     get lineSpace() { return this.size * 0.25; }
     get lineHeight() { return this.size + this.lineSpace; }
-    get fontStyle() { return `${this.weight} ${this.size}px '${this.font}'`; }
     get getText() { return typeof this.text === 'function' ? this.text() : this.text.toString(); }
     _applyText() {
         const text = this.getText;
-        const style = this.fontStyle;
-        if (text === this.beforeText && this.fontStyleCache === style) return;
+        if (text === this.beforeText) return;
         this.beforeText = text;
-        this.fontStyleCache = style;
-        this.sizeCacheKey = text + style;
-        this.textSplit = text.split('\n');
-        let textWidth = 0, textHeight = 0
-        const ctx = game.layers.get('main').getContext();
-        this._applyContext(ctx);
-        for (let i = 0; i < this.textSplit.length; i++) {
-            const text = this.textSplit[i]
-            let tm = Moji.sizeCache.get(this.sizeCacheKey);
-            if (!tm) {
-                tm = ctx.measureText(text);
-                Moji.sizeCache.set(this.sizeCacheKey, tm);
-            }
-            textWidth = Math.max(tm.width, textWidth);
-            textHeight += Math.ceil(Math.abs(tm.actualBoundingBoxAscent) + Math.abs(tm.actualBoundingBoxDescent));
-        }
-        if (this.textSplit.length > 1) textHeight += this.lineSpace * (this.textSplit.length - 1);
-        const pos = this.owner.pos;
-        pos.width = textWidth;
-        pos.height = textHeight;
-    }
-    _applyContext(ctx) {
-        ctx.font = this.fontStyleCache;
-        ctx.textBaseline = this.baseLine;
-    }
-    draw(ctx) {
-        ctx.save();
-        this._applyText()
-        this._applyContext(ctx);
-        const pos = this.owner.pos;
-        ctx.translate(pos.center, pos.middle);
-        ctx.rotate(pos.angle * Util.radian);
-        this.owner.color.applyContext(ctx);
-        for (let i = 0; i < this.textSplit.length; i++) {
-            ctx.fillText(this.textSplit[i], -(pos.width * 0.5), -(pos.height * 0.5) + (i * this.lineHeight));
-        }
-        ctx.restore();
-    }
-}
-export class Moji2 {//文字コンポーネント
-    static requieds = [Pos, Color];
-    static sizeCache = new Map();
-    constructor() {
-        this.reset();
-    }
-    reset() {
-        this._text = this.beforeText = this.fontStyleCache = this.sizeCacheKey = '';
-        this.textSplit = undefined;
-        this._weight = 'normal';
-        this._size = cfg.fontSize.normal;
-        this._font = cfg.font.default.name;
-        this.baseLine = 'top';
-    }
-    set(text = '', x = this.owner.pos.x, y = this.owner.pos.y, options = {}) {
-        const { size = this._size, color = this.owner.color.value, font = this._font, weight = this._weight, align = this.owner.pos.align, valign = this.owner.pos.valign, angle = this.owner.pos.angle } = options;
-        this._text = text;
-        this._weight = weight;
-        this._size = size;
-        this._font = font;
-        this._applyText();
-        const pos = this.owner.pos;
-        pos.x = x;
-        pos.y = y;
-        pos.align = align;
-        pos.valign = valign;
-        pos.angle = angle;
-        this.owner.color.setColor(color);
-    }
-    get text() { return typeof this._text === 'function' ? this._text() : this._text.toString(); }
-    set text(v) {
-        this._text = v;
-        this._applyText();
-    }
-    get weight(){return this._weight}
-    set weight(v){this._weight=v;
-        this._applyText();
-    }
-    get size(){}
-    get lineSpace() { return this._size * 0.25; }
-    get lineHeight() { return this._size + this.lineSpace; }
-    get fontStyle() { return `${this._weight} ${this._size}px '${this._font}'`; }
-    get getText() { return typeof this._text === 'function' ? this._text() : this._text.toString(); }
-    _applyText() {
-        const text = this.getText;
-        const style = this.fontStyle;
-        if (text === this.beforeText && this.fontStyleCache === style) return;
-        this.beforeText = text;
-        this.fontStyleCache = style;
-        this.sizeCacheKey = text + style;
+        this.sizeCacheKey = text + this.fontStyle;
         this.textSplit = text.split('\n');
         let textWidth = 0, textHeight = 0
         const ctx = game.layers.get('main').getContext();
@@ -1325,7 +1236,7 @@ export class Menu extends Mono {//メニュー表示
             yield undefined;
             yield* move.call(this, 'up', length - 1);
             yield* move.call(this, 'down', 1);
-            if (game.input.isPress('z')) return this.child.objs[this.index + this.indexOffset].moji.getText;
+            if (game.input.isPress('z')) return this.child.objs[this.index + this.indexOffset].moji.text;
             if (this.isEnableCancel && game.input.isPress('x')) return undefined;
         }
     }
