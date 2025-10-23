@@ -1053,7 +1053,15 @@ export class Moji {//文字コンポーネント
         this.beforeText = text;
         this.sizeCacheKey = text + this.fontStyle;
         this.textSplit = text.split('\n');
+let tm = Moji.sizeCache.get(this.sizeCacheKey);
+            if (!tm) {
+                tm = ctx.measureText(text);
+                Moji.sizeCache.set(this.sizeCacheKey, tm);
+            }
+
+
         let textWidth = 0, textHeight = 0
+
         const ctx = game.layers.get('main').getContext();
         this._applyContext(ctx);
         for (let i = 0; i < this.textSplit.length; i++) {
@@ -1077,7 +1085,7 @@ export class Moji {//文字コンポーネント
     }
     draw(ctx) {
         ctx.save();
-        this._applyText()
+        if(typeof this.text === 'function')this._applyText();
         this._applyContext(ctx);
         const pos = this.owner.pos;
         ctx.translate(pos.center, pos.middle);
